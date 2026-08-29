@@ -106,6 +106,7 @@ git clone https://github.com/Zessi-C/biofigure-self-evolve.git ~/.agents/skills/
 ## 兼容性
 
 - **原生适配**：任何读取 agents/skills 约定（`SKILL.md` + frontmatter）的 harness / agent CLI——克隆到其技能发现目录即可用，无构建步骤、无运行时依赖
+- **DeepSeek Harness (dsh)**：dsh 采用相同的 Agent Skills 契约（SKILL.md 文件夹 + 多发现根）。安装：`git clone https://github.com/Zessi-C/biofigure-self-evolve.git ~/.dsh/skills/biofigure-self-evolve`，或从 `~/.agents/skills/` 软链进 `~/.dsh/skills/`。注：依据 dsh 公开文档（developer preview）判断兼容，本仓库尚未在 dsh 上实测，欢迎反馈
 - **其他 harness**：只要能读文件、抓网页、跑脚本并遵循 SKILL.md 的指令流，就能驱动本技能；有自有插件清单格式（plugin manifest / slash command / MCP）的 harness，需要一个薄适配层把「加载 SKILL.md + 按 A/B 模式执行」接进去，技能本体无需改动
 - **不依赖**：任何特定厂商的专有 API、MCP 服务器或联网服务；图库与偏好档案是纯文件
 
