@@ -11,3 +11,6 @@ __pycache__/
 # 索引是 figure.md 的可再生投影，且含个人学习元数据，不入公开仓库
 library/INDEX.json
 library/INDEX.md
+
+# 用户偏好档案是个人数据
+library/PREFERENCES.md

@@ -37,6 +37,19 @@ INDEX_MD_PLACEHOLDER = """# Biofigure Library 索引
 （还没有条目。学习第一个 figure 后运行 scripts/build_index.py 重建本文件。）
 """
 
+PREFERENCES_TEMPLATE = """# 用户偏好档案
+
+（跨条目的个人审美与习惯，实现"图库越长越像你"。由 agent 在复用交付后自动追加——
+只记录可观察到的偏好信号，禁止脑补。优先级：用户当前指令 > 稳定偏好 > 条目缺省。
+规范见技能 references/preference-profile.md）
+
+## 稳定偏好
+（同一偏好累计 ≥2 次一致才从下方晋升到这里；每行格式：偏好 〔日期 场景，次数〕）
+
+## 单次观察
+（格式：- 日期 〔场景〕 偏好内容——待复现确认）
+"""
+
 
 def write_if_missing(path: str, content: str) -> bool:
     if os.path.exists(path):
@@ -93,6 +106,8 @@ def main() -> int:
         created.append("INDEX.json")
     if write_if_missing(os.path.join(root, "INDEX.md"), INDEX_MD_PLACEHOLDER):
         created.append("INDEX.md")
+    if write_if_missing(os.path.join(root, "PREFERENCES.md"), PREFERENCES_TEMPLATE):
+        created.append("PREFERENCES.md")
 
     print(f"图库根目录: {root}")
     if created:
