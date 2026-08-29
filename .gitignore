@@ -1,0 +1,13 @@
+# library/figures 下默认全部私有（个人学习记录与学习所得不对外分发）
+library/figures/*
+# 仅随仓库发布一个自制示例条目（演示记录格式，无版权牵连）
+!library/figures/000-example-grouped-boxplot
+
+# macOS / Python
+.DS_Store
+__pycache__/
+*.pyc
+
+# 索引是 figure.md 的可再生投影，且含个人学习元数据，不入公开仓库
+library/INDEX.json
+library/INDEX.md

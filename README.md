@@ -1,0 +1,150 @@
+# biofigure-self-evolve
+
+**自进化的生物信息学 figure 学习库与复用引擎**
+An evolving library that learns how bioinformatics figures are drawn — from papers, PDFs, WeChat articles, or screenshots — and imitates them when you actually need to plot.
+
+---
+
+## 目录
+
+- [为什么需要它](#为什么需要它)
+- [工作闭环](#工作闭环)
+- [三种学习粒度](#三种学习粒度)
+- [核心心法：参考模仿，不是照抄](#核心心法参考模仿不是照抄)
+- [追溯原始代码](#追溯原始代码)
+- [安装](#安装)
+- [图库格式](#图库格式)
+- [脚本](#脚本)
+- [交互与非交互环境](#交互与非交互环境)
+- [跨设备同步](#跨设备同步)
+- [设计约束与 FAQ](#设计约束与-faq)
+- [License 与致谢](#license-与致谢)
+
+## 为什么需要它
+
+做生信分析时最常见的循环：文献里看到一张漂亮的图 → 想给自己的数据画一张一样的 → 翻回原文猜参数、重写代码、反复调样式。已有的模板集（如 [FigureYa](https://github.com/ying-ge/FigureYa)）很好用，但靠社区手工维护，**不会从你自己的阅读中进化**。
+
+本项目把这件事交给 agent：你平时发给它读的每一篇文献、每一张截图，都可以变成图库里的一条可复用画法；等你真正要画图时，agent 先检索图库、临摹适配，而不是每次从零设计。**图库随你的使用不断生长，且长得越来越像你的审美。**
+
+## 工作闭环
+
+技能（[SKILL.md](SKILL.md)）只定义两个模式：
+
+**模式 A · 学习**——发来材料时把图"解剖入库"：
+
+1. 查重归位：检索 INDEX，与已有条目功能近似的，选择「合并更新 / 登记为 `related` 变体 / 独立新建」
+2. 获取图像并追溯原始代码（见[下文](#追溯原始代码)——代码是配方的事实源）
+3. 解剖：图类型、数据形状、图层与映射、坐标变换、配色排版、适用边界
+4. 写结构化记录 `figure.md`（schema 见 [references/figure-record.md](references/figure-record.md)）
+5. 生成 R + Python 双模板并**实际运行验证**（`verified` 字段如实标注，缺运行时就标 `unverified`）
+6. 通过 11 项完工清单（回答什么问题 / 数据形状可判读 / 配方可复现 / 配色具体 / 排版规格 / 面板联动 / 边界与坑 / related 登记 / 模板可运行 / 原图可溯 / 代码溯源）
+7. 重建索引，逐图汇报取舍（学了什么、为什么没学别的）
+
+**模式 B · 复用**——你要画图时先查库再动手：
+
+1. 读 `INDEX.json` 语义匹配（chart_types + data_shape + use_when/not_when + aliases）
+2. 多候选时按「数据形状匹配 > 意图匹配 > verified」排序，只列 top ≤3 并给推荐
+3. 命中 → **临摹式适配**你的真实数据：借技术骨架，列名、阈值、配色、分组全部按你的数据和目的重定
+4. 未命中 → 正常设计；你满意后 agent 主动提议"要不要把这次的画法入库？"——这是图库进化的重要入口
+
+## 三种学习粒度
+
+生信文献图的新意往往不在单图，而在组合与成对叙事。判断口诀：**删掉其中一张图、另一张是否受损？**
+
+| 粒度 | 适用 | 例子 |
+|---|---|---|
+| 单图条目 | 一个独立图表类型 | 编号聚类 UMAP |
+| 组合版式条目 | 多子图拼接本身是亮点 | 高亮 UMAP 纵列 + dotplot + 热图并排；记录「面板联动」是核心 |
+| 图序模式条目 | 多张图成组讲一个故事 | 总览编号 UMAP 的群编号 = 详情组图的行索引；参考图把成组图拼成一张 |
+
+## 核心心法：参考模仿，不是照抄
+
+图库条目是**范帖，不是模板**。每次输入的数据结构、组数、目的都不同：
+
+- 复用时提取的是**技术骨架**（图层组织、映射方式、配色逻辑、排版策略、联动设计），轴、阈值、色值、分面数、面板构成一律按你的数据重定
+- 允许部分借用——条目只有局部相似时，就只借那一部分（比如只学标签防重叠策略）
+- 学习时配方写到「技术」层面而非「参数」层面：记"qualitative 色板 + 密度中心标编号"，不记"必须 8 个群用这 8 个色号"
+
+## 追溯原始代码
+
+**图像只是配方的间接证据，代码才是事实源。** 材料中出现任何代码线索时必走四级路径：
+
+1. **正文内嵌代码** → 直接作一手配方（公众号教程常整段贴码）
+2. **文中 GitHub 仓库** → GitHub API 列文件树找绘图脚本（`api.github.com/repos/<user>/<repo>/git/trees/main?recursive=1`），raw 拉取
+3. **只给了论文** → 解 DOI 后查 PMC 全文 "Data and code availability" 拿仓库 URL，回到第 2 步
+4. **穷尽未果** → 才看图反推，并在记录里如实标注"代码未溯源"
+
+实战案例：一篇公众号文章介绍 Cancer Cell 论文的组图，文中无链接 → 从 PMC 全文的 code availability 找到 `CRC_micromets_ST` 仓库 → 拉到 `Figure1D_E.R` → 发现 Sankey 实际用的是 `ggsankey::make_long` 而非肉眼看像的 ggalluvial，"log2 轴 + 标原始数"的实现是「y 画 log2 值、另一列标原数」。看图会猜错的两处，代码一锤定音。
+
+## 安装
+
+```bash
+git clone https://github.com/Zessi-C/biofigure-self-evolve.git ~/.agents/skills/biofigure-self-evolve
+```
+
+适用于任何遵循 agents/skills 约定的 agent（目录内 `SKILL.md` + name/description frontmatter 即技能身份）。依赖极轻：
+
+- **脚本**：Python 3 标准库即可（装了 PyYAML 会走它，没有用内置受限解析器，已双向测试）
+- **模板验证**：本机有 R（ggplot2 系）和/或 Python（matplotlib 系）即可；缺失语言的模板会如实标 `unverified`
+- 触发方式：对 agent 说「学一下这个图 / 把这张图入库 / 照这张图画 / 帮我画个火山图」等，技能描述覆盖了这些语境
+
+## 图库格式
+
+```text
+library/
+├── INDEX.json / INDEX.md     # 索引：由脚本从全部 figure.md 全量重建，勿手改
+└── figures/NNN-slug/         # NNN 三位递增，slug 小写连字符
+    ├── figure.md             # 核心：元数据 + 视觉解剖 + 语言无关配方 + 模板自检 + 复用要点
+    ├── reference.png         # 原图参考（个人学习用，公开分发注意版权）
+    ├── template.R            # 自包含 R 模板：内嵌逼真假数据，无参数运行即出图
+    ├── template.py           # 自包含 Python 模板，同上
+    └── template_output_*     # 运行验证产物（"已知良好输出"，复用时可对照）
+```
+
+`figure.md` 的 frontmatter 使用**受限 YAML 子集**（标量 / 单行列表 / 一层嵌套 map，禁止多行块与锚点）——这是刻意的：保证没有 YAML 库的环境也能可靠解析，格式自由度换跨设备可靠性。
+
+关键字段（完整 schema 见 [references/figure-record.md](references/figure-record.md)）：
+
+| 字段 | 作用 |
+|---|---|
+| `chart_types` | 受控词表（38+ 种生信图类型，见 [references/chart-taxonomy.md](references/chart-taxonomy.md)），可多值 |
+| `data_shape` | 只读这行就能判断自己的表能不能套 |
+| `use_when` / `not_when` | 复用语义匹配的主要依据 |
+| `related` | 同功能变体互指（双方都写），多候选排序与查重的依据 |
+| `verified` | `both` / `partial` / `unverified`，以实际运行为准，不许虚标 |
+| `source` | 出处五字段（类型/标题/DOI 或 URL/面板号/日期），manual 条目 ref=original |
+
+同功能的多张图用 `related` 织成变体群（如"纯 KM 曲线"与"KM + 风险表"互指，各自写清何时用谁）——检索时给用户的是带差异说明的候选，而不是一堆撞名条目。
+
+## 脚本
+
+```bash
+python3 scripts/init_library.py    # 初始化图库骨架（幂等；--path 可放别处，自动写配置指针）
+python3 scripts/build_index.py     # 全量重建索引 + 一致性校验
+```
+
+`build_index.py` 的校验项：必填字段缺失、id 与目录名不一致、`related` 悬空引用、目录缺 `figure.md`、列表字段误写为标量（自动容错）。跨设备同步后跑一次即可。
+
+## 交互与非交互环境
+
+- **交互环境**：显式要求必学必做；发材料未提学习时，agent 主动问一句是否入库；复用多候选时一次性列 top ≤3 让你选
+- **非交互环境**（后台任务/管道/已声明勿扰）：**永不等待用户输入**——学习仅在明确要求时执行，复用选最优直接画并在交付说明里注明假设
+- 不触发边界：纯文献阅读/翻译不提入库；你自带完整绘图代码时不接管；非生信图表不接管
+
+## 跨设备同步
+
+技能目录本身是 git 仓库（图库内嵌其中），直接 `git pull` / `git push` 即可。个人学习所得默认**不进公开仓库**（见 `.gitignore`：`library/figures/*` 全部忽略，仅示例条目除外）；要私有同步，把 remote 换成你自己的私有仓库即可。
+
+## 设计约束与 FAQ
+
+- **示例条目**：`figures/000-example-grouped-boxplot` 是唯一的随库条目，演示完整格式（记录 + 双模板 + 验证产物），也是新条目的照抄骨架。其 `source.type=manual`——复用流程中"满意后回流"的条目就是这个样子
+- **多候选排序**：数据形状匹配 > 意图匹配 > verified 状态；只列 top ≤3，每条一句关键差异
+- **编号规则**：新条目取现有最大 NNN+1；删除不复用编号；双设备同时学习撞号时手动改大号一侧并重建索引
+- **SKILL.md 体量**：刻意控制在 ~220 行——技能主文件是每次触发都要读的，机制只加到"能指导行为"为止，细节全部下沉到 references/
+- **手动改了 figure.md 之后**：必须重跑 `build_index.py`，figure.md 是唯一事实源，索引只是投影
+
+## License 与致谢
+
+- 代码与文档：MIT（见 [LICENSE](LICENSE)）
+- 灵感致谢 [FigureYa](https://github.com/ying-ge/FigureYa)（iMetaMed 2025）——本项目学习其"条目结构统一 + 参考图 + 索引"的思想，差异在自进化闭环
+- 随库示例条目为原创内容；**你学习所得的条目（含参考图）属于你的个人数据，默认不随本仓库分发**，公开分享前请注意原文献版权
