@@ -14,6 +14,7 @@ An evolving library that learns how bioinformatics figures are drawn — from pa
 - [核心心法：参考模仿，不是照抄](#核心心法参考模仿不是照抄)
 - [追溯原始代码](#追溯原始代码)
 - [安装](#安装)
+- [兼容性](#兼容性)
 - [图库格式](#图库格式)
 - [脚本](#脚本)
 - [交互与非交互环境](#交互与非交互环境)
@@ -101,6 +102,12 @@ git clone https://github.com/Zessi-C/biofigure-self-evolve.git ~/.agents/skills/
 - **脚本**：Python 3 标准库即可（装了 PyYAML 会走它，没有用内置受限解析器，已双向测试）
 - **模板验证**：本机有 R（ggplot2 系）和/或 Python（matplotlib 系）即可；缺失语言的模板会如实标 `unverified`
 - 触发方式：对 agent 说「学一下这个图 / 把这张图入库 / 照这张图画 / 帮我画个火山图」等，技能描述覆盖了这些语境
+
+## 兼容性
+
+- **原生适配**：任何读取 agents/skills 约定（`SKILL.md` + frontmatter）的 harness / agent CLI——克隆到其技能发现目录即可用，无构建步骤、无运行时依赖
+- **其他 harness**：只要能读文件、抓网页、跑脚本并遵循 SKILL.md 的指令流，就能驱动本技能；有自有插件清单格式（plugin manifest / slash command / MCP）的 harness，需要一个薄适配层把「加载 SKILL.md + 按 A/B 模式执行」接进去，技能本体无需改动
+- **不依赖**：任何特定厂商的专有 API、MCP 服务器或联网服务；图库与偏好档案是纯文件
 
 ## 图库格式
 
