@@ -2,6 +2,8 @@
 library/figures/*
 # 仅随仓库发布一个自制示例条目（演示记录格式，无版权牵连）
 !library/figures/000-example-grouped-boxplot
+# 模板验证产物可再生（含大文件），不入仓库
+library/figures/*/template_output_*
 
 # macOS / Python
 .DS_Store

@@ -61,7 +61,7 @@ def write_if_missing(path: str, content: str) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--path", help="图库根目录（默认 ~/biofigure-library，或环境变量 BIOFIGURE_LIBRARY）")
+    parser.add_argument("--path", help="图库根目录（默认 <技能目录>/library，或环境变量 BIOFIGURE_LIBRARY）")
     parser.add_argument("--no-config", action="store_true", help="不写 config.json 指针")
     args = parser.parse_args()
 

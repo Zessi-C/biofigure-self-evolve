@@ -9,6 +9,7 @@ A self-evolving library and reuse engine for bioinformatics figures. The agent s
 - **Learning**: send the agent a paper, PDF, article, or screenshot. It decides whether to record a single figure, a group, or a composite layout, and traces the original plotting code first (inline code > GitHub repo > paper DOI → PMC code availability); only without any code lead does it infer from the image, and the record says so.
 - **Reuse**: when you need a plot, it retrieves entries by `use_when` / `data_shape`, borrows the technical skeleton, and decides axes, thresholds, and colors against your current data. With several candidates it returns the top three, ranked by data shape match, then intent match, then verification status.
 - **Recycling**: a satisfying result becomes a new entry; feedback on an existing entry goes into its template defaults and is logged in the entry's evolution section; habits that recur across figures settle into `library/PREFERENCES.md`.
+- **Migration**: entries can be packed into a bundle (zip with manifest and per-file checksums) and imported into another device's library; collisions can be skipped, overwritten, or renumbered. After importing into a new environment, run `verify_library.py` to re-check the templates.
 
 Completion of a learned entry is judged by a checklist. The record format is in [references/figure-record.md](references/figure-record.md); trigger behavior is in SKILL.md.
 
@@ -37,7 +38,7 @@ library/
     ├── template.R / template.py   # self-contained dual templates, produce a figure with no arguments
     └── template_output_*   # template outputs, kept as known-good baselines
 references/                 # record schema, per-source ingestion, chart_types controlled vocabulary (~40 types), preference profile format
-scripts/                    # init_library.py / build_index.py
+scripts/                    # init_library / build_index / export_figure / import_figure / verify_library
 ```
 
 The frontmatter is a deliberately narrow YAML subset (scalars, single-line lists, one nesting level) that parses reliably without a YAML library. Key fields: `chart_types` (controlled vocabulary), `data_shape` (input format in one line), `use_when` / `not_when` (semantic matching at reuse), `related` (links between functionally adjacent entries), `verified` (actual runs only).
@@ -49,6 +50,12 @@ The frontmatter is a deliberately narrow YAML subset (scalars, single-line lists
 ```bash
 python3 scripts/init_library.py    # initialize the library skeleton (idempotent; --path to place it elsewhere and write the config)
 python3 scripts/build_index.py     # rebuild the index in full with consistency checks; rerun after editing any figure.md
+python3 scripts/build_index.py --check      # only compare the index against the records (exit 1 on drift), writes nothing
+
+# Cross-device entry migration (typical: learn figures locally while reading papers, reuse on a server)
+python3 scripts/export_figure.py 003 --with-related   # pack entries into a bundle (id / numeric prefix / all)
+python3 scripts/import_figure.py bundle.zip           # verify integrity then import, rebuilds the index; collisions rejected by default (--force overwrite / --rename renumber)
+python3 scripts/verify_library.py                     # health check: trial-run templates in a temp dir, reports only
 ```
 
 ## License

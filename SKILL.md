@@ -34,6 +34,7 @@ description: 生物信息学 figure 的学习库与复用引擎：把文献、PD
 | "照这张图画 / 按这篇文献风格复刻"（给了参考图或文献） | 参考图即规格：先按模式 A 学习它（这就是明确意图，无需再问），再按其配方对用户数据出图 |
 | 用户对刚交付的图表示满意 | 提议入库（manual 来源），同意即走模式 A |
 | 用户问"你都会画哪些图 / 看看图库" | 读 INDEX.md，按 chart_types 分组展示，不逐条展开 |
+| 用户要求把条目发到别的设备（"把 003 发给服务器"）或导入一个 bundle 包 | 跨设备导出/导入：导出跑 `export_figure.py`，导入跑 `import_figure.py`，直接执行（见「跨设备导出/导入」节） |
 
 **不触发的边界**（防止过度打扰与错误接管）：
 
@@ -43,7 +44,7 @@ description: 生物信息学 figure 的学习库与复用引擎：把文献、PD
 
 ## 图库位置
 
-图库**内嵌在技能目录下**（`<本技能目录>/library/`），与技能是同一个文件夹——把整个技能目录拷贝/同步到任何设备的任何 agent 的技能目录，技能与图库同时就位，无需任何配置。图库是纯文件，建议对技能目录做 git 版本管理（防误删，同步也有历史）。
+图库**内嵌在技能目录下**（`<本技能目录>/library/`），与技能是同一个文件夹——把整个技能目录拷贝/同步到任何设备的任何 agent 的技能目录，技能与图库同时就位，无需任何配置。图库是纯文件，建议对技能目录做 git 版本管理（防误删，同步也有历史）。跨设备有两条路线：整库双向同步（私有 git 仓库或云盘），或按条目细粒度迁移（见「跨设备导出/导入」节）。
 
 仅当用户明确要求把图库放在别处时，按以下顺序解析（脚本端同样遵守）：
 
@@ -180,7 +181,7 @@ description: 生物信息学 figure 的学习库与复用引擎：把文献、PD
 
 ### B1 检索
 
-读 `INDEX.json`（缺失或明显过期时先跑 `build_index.py` 重建）和 `library/PREFERENCES.md`（若存在）。索引用语义匹配而非纯关键词：综合 `chart_types` + `data_shape` + `use_when`/`not_when` + `aliases` 判断哪条记录符合用户当前的数据和意图；偏好档案记录着用户跨会话的稳定习惯，供 B3 实例化时填充其未指定的细节。
+读 `INDEX.json`（缺失、或 `python3 <技能目录>/scripts/build_index.py --check` 报不一致时，先跑 `build_index.py` 重建）和 `library/PREFERENCES.md`（若存在）。索引用语义匹配而非纯关键词：综合 `chart_types` + `data_shape` + `use_when`/`not_when` + `aliases` 判断哪条记录符合用户当前的数据和意图；偏好档案记录着用户跨会话的稳定习惯，供 B3 实例化时填充其未指定的细节。
 
 ### B2 多候选排序与选择
 
@@ -213,12 +214,41 @@ description: 生物信息学 figure 的学习库与复用引擎：把文献、PD
 - **写回偏好**（跨图习惯，"图库越长越像你"的另一机制）：凡观察到合法偏好信号——用户明确的适配选择（"阈值用 1.5"）、对成图的反馈（"图例放上面"）、主动声明的习惯（"以后都要 PDF"）——按 `references/preference-profile.md` 追加进 `library/PREFERENCES.md`（先记单次观察，≥2 次一致晋升稳定偏好）。只记可观察信号，禁止脑补；没有信号就不写
 - **未命中**：按普通流程从头设计这张图（不要硬套相近条目），正常交付。交付后若用户表示满意，主动提议：「要不要把这次的画法入库？」→ 走模式 A 沉淀（source.type=manual，ref 记本次任务描述；manual 条目的 reference.png 存**交付的成图**，没有原文献图）。这是图库进化的主要入口之一
 
+## 跨设备导出/导入
+
+典型场景：在个人电脑读文献学图，在服务器上跑分析时用。条目以单文件 **bundle**（zip，内含清单与逐文件 sha256）迁移；技能只管打包与解包，传输用 scp / rsync 等任意手段。
+
+**导出**（在学会条目的设备上）：
+
+```bash
+python3 <技能目录>/scripts/export_figure.py 003                 # 数字前缀或完整 id，可多个，可用 all
+python3 <技能目录>/scripts/export_figure.py 004 --with-related  # 连同 related 互指的条目一起打包
+# --with-preferences 附带 PREFERENCES.md；template_output_* 验证产物默认不入包
+```
+
+**导入**（在目标设备上）：
+
+```bash
+python3 <技能目录>/scripts/import_figure.py bundle.zip --list   # 先预览包内容
+python3 <技能目录>/scripts/import_figure.py bundle.zip          # 校验完整性后导入，自动重建索引
+```
+
+冲突策略（目标已有同 id 条目）：内容一致 → 跳过；内容不同 → 默认拒绝并提示，加 `--force` 覆盖，或 `--rename` 分配新编号（自动改写 frontmatter 的 id 与同批条目间的 related 互指）。非交互环境遇冲突跳过该项、继续导入其余条目。`--dry-run` 只走校验与判定不写盘。
+
+导入后两件事：
+
+- **体检**：目标环境可能与学图时的机器不同（缺 R 包等），跑 `python3 <技能目录>/scripts/verify_library.py` 把各模板复制到临时目录试运行；它只出报告不改图库，失败的条目按其报告处理（补依赖重跑，或更新 figure.md 的 verified 与「模板自检记录」）
+- **偏好档案**：包内若带 PREFERENCES.md 而目标已有同名文件，脚本不覆盖——散文式合并由 agent 对比两份文件手工完成
+
 ## 维护
 
 - `scripts/init_library.py [--path DIR]`：初始化图库骨架（幂等）；用 `--path` 指定非默认位置时自动写入 `~/.config/biofigure-self-evolve/config.json`
-- `scripts/build_index.py [--library DIR]`：扫描所有 `figures/*/figure.md`，重建 INDEX.json + INDEX.md（无 PyYAML 也能跑）；索引与记录不一致、或手动改过 figure.md 后运行
+- `scripts/build_index.py [--library DIR]`：扫描所有 `figures/*/figure.md`，重建 INDEX.json + INDEX.md（无 PyYAML 也能跑），并告警缺字段、id 与目录名不一致、related 悬空、languages 与模板文件不符、reference.png 缺失或超 2MB；手动改过 figure.md 后运行
+- `scripts/build_index.py --check`：只比对索引与记录是否一致（不一致退出码 1），不写文件；模式 B 检索前的快速新鲜度判定
+- `scripts/export_figure.py <id...>` / `scripts/import_figure.py <bundle.zip>`：跨设备迁移条目，见「跨设备导出/导入」节
+- `scripts/verify_library.py`：把各条目模板复制到临时目录试运行，只报告 pass / fail / skip，不改图库；条目导入新环境后跑一遍
 - 手动修改记录后必须重跑 build_index.py——figure.md 是唯一事实源，索引只是投影
-- 跨设备：整个技能目录（含 library/）一起同步即可，git 仓库或任意云盘均可；不依赖 ZCode 或任何特定 agent 的特性
+- 跨设备：整库双向同步用私有 git 仓库或云盘（整个技能目录含 library/ 一起同步即可）；按条目单向迁移用 export/import 脚本。不依赖 ZCode 或任何特定 agent 的特性
 - `library/PREFERENCES.md` 是用户个人数据：公开分发图库时排除它（示例仓库的 .gitignore 已配置），私有同步仓库随库走
 - 新增条目编号取现有最大 NNN + 1；删除条目时连同目录一起删并重建索引，不要复用旧编号；删除后记得把其他条目 `related` 里指向它的引用清掉（build_index.py 会对此告警）
 

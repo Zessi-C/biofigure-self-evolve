@@ -6,8 +6,9 @@
 references/figure-record.md 的 frontmatter 语法限制。
 
 用法:
-    build_index.py                # 解析图库位置：--library > $BIOFIGURE_LIBRARY > config > ~/biofigure-library
+    build_index.py                # 解析图库位置：--library > $BIOFIGURE_LIBRARY > config > <技能目录>/library
     build_index.py --library DIR  # 显式指定图库
+    build_index.py --check        # 只比对 INDEX.json 与记录是否一致，不写任何文件
 """
 import argparse
 import datetime
@@ -152,17 +153,8 @@ def build_index_md(figures: list) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--library", help="图库根目录")
-    args = parser.parse_args()
-
-    root = resolve_library(args.library)
-    fig_dir = os.path.join(root, "figures")
-    if not os.path.isdir(fig_dir):
-        print(f"错误: 未找到图库 {root}（缺 figures/）。先运行 init_library.py。", file=sys.stderr)
-        return 1
-
+def collect_records(fig_dir: str):
+    """扫描 figures/ 下所有条目，返回 (records, warnings)。构建与 --check 共用。"""
     records, warnings = [], []
     for name in sorted(os.listdir(fig_dir)):
         record_path = os.path.join(fig_dir, name, "figure.md")
@@ -185,6 +177,26 @@ def main() -> int:
         missing_src = [k for k in SOURCE_FIELDS if k not in source]
         if missing_src:
             warnings.append(f"{name}: source 缺少 {', '.join(missing_src)}")
+
+        # languages 与模板文件一致性（双向）+ reference.png 检查
+        files = set(os.listdir(os.path.join(fig_dir, name)))
+        langs = _as_list(data.get("languages"))
+        has_py = "Python" in langs or "python" in langs
+        if "R" in langs and "template.R" not in files:
+            warnings.append(f"{name}: languages 含 R 但缺少 template.R")
+        if has_py and "template.py" not in files:
+            warnings.append(f"{name}: languages 含 Python 但缺少 template.py")
+        if "template.R" in files and "R" not in langs:
+            warnings.append(f"{name}: 存在 template.R 但 languages 未列出 R")
+        if "template.py" in files and not has_py:
+            warnings.append(f"{name}: 存在 template.py 但 languages 未列出 Python")
+        if "reference.png" not in files:
+            warnings.append(f"{name}: 缺少 reference.png")
+        else:
+            size = os.path.getsize(os.path.join(fig_dir, name, "reference.png"))
+            if size > 2 * 1024 * 1024:
+                warnings.append(f"{name}: reference.png 过大（{size} 字节，超过 2MB）")
+
         records.append({
             "id": data.get("id", name),
             "title": data.get("title", ""),
@@ -210,6 +222,68 @@ def main() -> int:
         dangling = [rid for rid in r["related"] if rid not in all_ids]
         if dangling:
             warnings.append(f"{r['id']}: related 指向不存在的条目 {', '.join(dangling)}")
+    return records, warnings
+
+
+def check_index(root: str, records: list) -> int:
+    """把内存中的记录与磁盘 INDEX.json 对比（忽略 updated 字段），不写文件。"""
+    index_path = os.path.join(root, "INDEX.json")
+    if not os.path.exists(index_path):
+        print("不一致: INDEX.json 不存在（先运行 build_index.py 生成）。")
+        return 1
+    try:
+        with open(index_path, encoding="utf-8") as fh:
+            old = json.load(fh)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"不一致: INDEX.json 读取失败 — {e}")
+        return 1
+
+    ondisk = {r.get("id"): r for r in old.get("figures", [])}
+    inmem = {r["id"]: r for r in records}
+    added = sorted(set(inmem) - set(ondisk))
+    removed = sorted(set(ondisk) - set(inmem))
+    changed = {}
+    for rid in sorted(set(inmem) & set(ondisk)):
+        keys = set(inmem[rid]) | set(ondisk[rid])
+        diffs = sorted(k for k in keys if inmem[rid].get(k) != ondisk[rid].get(k))
+        if diffs:
+            changed[rid] = diffs
+
+    if not (added or removed or changed):
+        print("索引与记录一致")
+        return 0
+    print("索引与记录不一致:")
+    for rid in added:
+        print(f"  + 新增（索引中没有）: {rid}")
+    for rid in removed:
+        print(f"  - 消失（记录中已无）: {rid}")
+    for rid, diffs in changed.items():
+        print(f"  ~ 字段变化: {rid}（{', '.join(diffs)}）")
+    return 1
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--library", help="图库根目录")
+    parser.add_argument("--check", action="store_true",
+                        help="只比对 INDEX.json 与记录是否一致，不写任何文件")
+    args = parser.parse_args()
+
+    root = resolve_library(args.library)
+    fig_dir = os.path.join(root, "figures")
+    if not os.path.isdir(fig_dir):
+        print(f"错误: 未找到图库 {root}（缺 figures/）。先运行 init_library.py。", file=sys.stderr)
+        return 1
+
+    records, warnings = collect_records(fig_dir)
+
+    if args.check:
+        rc = check_index(root, records)
+        if warnings:
+            print(f"\n{len(warnings)} 条警告:", file=sys.stderr)
+            for w in warnings:
+                print(f"  - {w}", file=sys.stderr)
+        return rc
 
     today = datetime.date.today().isoformat()
     index = {"version": 1, "updated": today, "figures": records}
