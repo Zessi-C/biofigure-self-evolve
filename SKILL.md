@@ -53,6 +53,8 @@ python3 <技能目录>/scripts/install_hook.py --project /path/to/项目   # omp
 | 用户发来文献材料但未提学习，材料中有值得学的 figure | 一句话问是否入库（例："Fig.3 的点图画法不错，入库吗？"）；非交互不打扰 |
 | 明确要求画生信图（点名图型或描述意图，如"生存分析画条曲线"） | 模式 B：先跑 `retrieve.py` 检索（硬规则第 1 条），再动手 |
 | 数据分析任务隐含出图需求（如差异分析跑完需要呈现结果） | 结果呈现前跑 `retrieve.py`；命中按复用流程，未命中正常设计 |
+| 一次要一整套图（每个对象/亚群/对比一张） | 模式 B 的 B0：先出图族清单（图名/条目/尺寸/命名/路径），再批量出图、统一自检 |
+| 「参考我之前的风格 / 把项目里这套画法入库 / 提取这套绘图风格」 | 模式 A 的 A0.5：先读项目绘图脚本（事实源）再读成图，`source.type=project`，学 house style 而非抄单图 |
 | 要把画图/改图/复刻/学图委派给子代理 | 委派提示带上技能入口或 `retrieve.py --json` 结果（硬规则第 3 条），父代理收工前检查子代理是否照做 |
 | "照这张图画 / 按这篇文献风格复刻"（给了参考图或文献） | 参考图即规格：先按模式 A 学习它（这就是明确意图，无需再问），再按其配方对用户数据出图 |
 | 用户对刚交付的图表示满意 | 提议入库（manual 来源），同意即走模式 A |
@@ -121,6 +123,18 @@ python3 <技能目录>/scripts/install_hook.py --project /path/to/项目   # omp
 - **独立条目**：仅图类型撞名、回答的问题确实不同 → 正常新建
 
 宁可多建带 `related` 的变体条目，也不要把不同画法硬塞进一条记录里稀释配方精度。
+
+### A0.5 从项目历史学（比从文献学更贴近你的风格）
+
+触发：用户说"参考我之前的风格""把项目里这套画法入库""照 scripts 里的图来""提取这套绘图与输出风格"——**你的历史成图与脚本，就是最该被复用的配方来源**。文献条目给你新画法，项目历史条目给你**house style**（配色函数、主题、尺寸、命名、目录）。
+
+顺序与要点：
+
+1. **先读脚本再读图**：脚本是事实源（主题函数、色板、`ggsave`/`cairo_pdf` 的宽高与 dpi、拼合方式），成图只用来确认视觉结果。读 `code/*.plot.R` 这类绘图脚本、项目级主题/色板函数、以及图件目录的 `README.md`
+2. **学"这套项目的做法"而不是抄一张图**：配色语义、尺寸与字号层级、分面/拼合策略、导出规格、命名与目录约定——这些跨图复用价值最高
+3. 记录时 `source.type: project`（见 `references/figure-record.md`），`source.ref` 写脚本路径 + 成图路径；`reference.png` 存该项目的成图（注意脱敏）
+4. **与文献条目的关系**：同一画法若已有文献条目，项目版本通常是它的"落地变体" → 按 A0 登记为变体并 `related` 互指，在对比句里写清"项目 house style vs 原文献画法"的区别
+5. 学完顺手把跨图的那些约定（配色语义、尺寸、命名、目录）按 `references/preference-profile.md` 写进 `PREFERENCES.md` 并标适用范围——它们是项目级偏好，不是全图型通用规则
 
 ### A1 获取图像并确定学习单元
 
@@ -204,6 +218,17 @@ python3 <技能目录>/scripts/install_hook.py --project /path/to/项目   # omp
 
 ## 模式 B：复用画图
 
+### B0 图族清单（一次要一整套图时先列清单）
+
+需求是一组图而不是一张图时（"每个对象都画 umap/pca/harmony""11 个谱系 × 4 个对比""每个亚群一张"），**先列清单再动手**，否则会陷入逐张返工：
+
+1. 产出清单表：`图名 | 复用条目 | 数据入口 | 画布尺寸 | 输出路径/命名 | 备注`
+2. 命名按「层级 + 图型 + 分组/方法 + 序号」组织（见 `references/delivery-checklist.md` 第 5 节），一次定死，不要边画边改
+3. 交互环境把清单给用户过一眼（这是唯一值得停下来确认的时刻）；非交互环境按偏好默认执行，并在交付说明里列出清单
+4. 批量出图 → **统一自检**（B5）→ 更新图件清单（`figure_manifest.py --write`）
+
+一套图的返工成本是单图的 N 倍，规格前置是这里唯一的省力点。
+
 ### B1 检索
 
 首选跑脚本——一次调用同时拿到候选与偏好摘要，比读整个索引省得多：
@@ -245,13 +270,30 @@ python3 <技能目录>/scripts/retrieve.py "用户要画什么，一两句"
 
 ### B4 交付与进化
 
-- 交付时注明：复用了 `NNN-slug`、做了哪些适配假设
+- 交付时注明：复用了 `NNN-slug`、做了哪些适配假设；并按 B5 过一遍 `references/delivery-checklist.md`，交付说明里写清**目视看到了什么**
 - **按反馈进化条目**（用户对这张图**画法本身**的反馈——无论是想改还是提了更好的做法）：回到**图库条目**落实，而不是只改一次性代码：
   - **画法级反馈**（图例位置、标签密度、配色体系、阈值/字号/尺寸缺省……）→ 直接改 `template.R` / `template.py` 的缺省值，同步更新该条目「配方」「复用要点」，**重跑双模板自检**，并在 figure.md 的「演化记录」追加一行：日期 + 反馈 + 改了什么
   - **数据级反馈**（"这批数据阈值要用 2"）→ 不动模板缺省，写进「复用要点」的变体或坑
   - 跨条目通用的习惯 → 同时写 `library/PREFERENCES.md`（见下条）；改完条目后重建索引
 - **写回偏好**（跨图习惯，"图库越长越像你"的另一机制）：凡观察到合法偏好信号——用户明确的适配选择（"阈值用 1.5"）、对成图的反馈（"图例放上面"）、主动声明的习惯（"以后都要 PDF"）——按 `references/preference-profile.md` 追加进 `library/PREFERENCES.md`（先记单次观察，≥2 次一致晋升稳定偏好）。只记可观察信号，禁止脑补；没有信号就不写
 - **未命中**：按普通流程从头设计这张图（不要硬套相近条目），正常交付。交付后若用户表示满意，主动提议：「要不要把这次的画法入库？」→ 走模式 A 沉淀（source.type=manual，ref 记本次任务描述；manual 条目的 reference.png 存**交付的成图**，没有原文献图）。这是图库进化的主要入口之一
+
+### B5 交付自检（强制目视，不可跳过）
+
+**渲染完成后必须亲眼看图**，这是本技能第二条硬规则（第一条是先检索）。真实使用记录里，跑过绘图命令的会话只有三分之一看过渲染结果，而用户反馈的缺陷几乎全是"看一眼就能发现"的：文字重叠、标题出界、字太小、留白过多、面板大小不一致、配色区分不开。
+
+1. 用 harness 的图像读取能力打开**最终交付的那几张图**（不是中间产物），逐项过 `references/delivery-checklist.md`
+2. 发现问题 → 改 → **复看**，直到清单全过；改完不看就交付等于没做
+3. 交付说明里写**看到了什么**（"y 轴标签原与分面标题重叠，已改竖排并复看确认"），不能只写"已检查"
+4. 无图像读取能力时退化为文件级检查（`figure_manifest.py` 看尺寸/像素/页数），并**如实说明"未能目视"**
+5. 图族/批量图：统一自检一遍，并更新图件清单：
+
+```bash
+python3 <技能目录>/scripts/figure_manifest.py <图件目录> --write   # 生成/更新 figure_manifest.csv
+python3 <技能目录>/scripts/figure_manifest.py <图件目录> --check   # 被取代的旧图/残留 → 退出码 1
+```
+
+清单里 `entry_reused` 一列填复用了哪条配方，与脚本头部的 `# Biofigure <id> — <要点>` 注释、交付说明三处对齐——"参考了什么"必须可追溯。
 
 ## 定期总结与整理（交付收尾自检）
 
@@ -334,6 +376,7 @@ python3 <技能目录>/scripts/import_figure.py bundle.zip          # 校验完�
 - `scripts/retrieve.py "<需求>"`：模式 B 的检索入口——直接扫 figure.md，输出 top-K 候选 + 偏好摘要；`--all` 浏览、`--json` 给子代理、`--chart/--lang` 预过滤、`--preferences-only` 只要偏好
 - `scripts/install_hook.py`：把常驻触发钩子写进 agent 指令层（幂等，成对注释块，`--check/--uninstall/--dry-run`，`--project DIR` 装项目级 AGENTS.md）；技能装完就跑它
 - `scripts/summary.py`：定量总结——图库规模与月度增长、复用台账（命中率/热度/未命中需求）、偏好计数、结构告警；`--check` 判到期（退出码 1）、`--write` 落盘 SUMMARY.md、`--json` 给 agent。只读（`--write` 除外）
+- `scripts/figure_manifest.py <图件目录>`：图件清单——扫描 pdf/png/jpg 记录体积、页数/像素、时间、校验和，语义列（`figure_set`/`entry_reused`/`note`）更新时保留；`--write` 写 `figure_manifest.csv`、`--check` 报未登记文件与被取代的旧图（退出码 1）
 - `scripts/review_preferences.py`：偏好整理审计——容量/格式/重复/晋升降级/跨条目复现/过期未复现/条目内堆积；`--check` 判到期（退出码 1）、`--digest` 出可粘贴进 harness 记忆的摘要、`--json` 给 agent 逐项执行。只读不写
 - `scripts/build_index.py [--library DIR]`：扫描所有 `figures/*/figure.md`，重建 INDEX.json + INDEX.md（无 PyYAML 也能跑），并告警缺字段、id 与目录名不一致、related 悬空、languages 与模板文件不符、reference.png 缺失或超 2MB；手动改过 figure.md 后运行
 - `scripts/build_index.py --check`：只比对索引与记录是否一致（不一致退出码 1），不写文件；模式 B 检索前的快速新鲜度判定
@@ -353,3 +396,4 @@ python3 <技能目录>/scripts/import_figure.py bundle.zip          # 校验完�
 | `references/chart-taxonomy.md` | 模式 A 打标签、模式 B 检索匹配时 |
 | `references/preference-profile.md` | 模式 B 读写 `PREFERENCES.md` 前、做偏好整理时（必读） |
 | `references/trigger-hook.md` | 安装技能时、或用户抱怨"agent 老是不查图库"时：钩子原理、手工文案、各 harness 位置（脚本见 `scripts/install_hook.py`） |
+| `references/delivery-checklist.md` | **每次交付图件前必读**（B5 目视自检清单：排版/留白/配色/内容/导出/命名/登记/复用回执） |

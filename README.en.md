@@ -9,6 +9,8 @@ A self-evolving library and reuse engine for bioinformatics figures. The agent s
 - **Trigger**: before producing, editing, replicating, or learning any bioinformatics/statistics figure, run `scripts/retrieve.py` against the library; state in the delivery which entry was reused (or that nothing matched); when delegating figure work to a subagent, pass the skill entry point or the retrieval result into the delegation prompt. When the skill description alone is not enough, install the short hook from `references/trigger-hook.md` into the project-level or global agent instructions.
 - **Learning**: send the agent a paper, PDF, article, or screenshot. It decides whether to record a single figure, a group, or a composite layout, and traces the original plotting code first (inline code > GitHub repo > paper DOI → PMC code availability); only without any code lead does it infer from the image, and the record says so.
 - **Reuse**: when you need a plot, it retrieves entries by `use_when` / `data_shape`, borrows the technical skeleton, and decides axes, thresholds, and colors against your current data. With several candidates it returns the top three, ranked by data shape match, then intent match, then verification status.
+- **Learn from your own projects**: say "follow my previous style / add this recipe to the library" and the agent reads your project's plotting scripts first (the source of truth), then the rendered figures, and records your house style (color semantics, sizes, composition, naming, layout) as an entry with `source.type=project`.
+- **Delivery**: for a family of figures, produce the list first (B0); before handing anything over, run the mandatory visual self-check (B5 + `references/delivery-checklist.md`: overlap, out-of-canvas, font size, whitespace, color separability, naming, export spec) and refresh the figure manifest (`scripts/figure_manifest.py`).
 - **Recycling**: a satisfying result becomes a new entry; feedback on an existing entry goes into its template defaults and is logged in the entry's evolution section; habits that recur across figures settle into `library/PREFERENCES.md`.
 - **Consolidation**: cross-figure preferences (`PREFERENCES.md`) and per-entry ones (each entry's reuse notes and evolution log) are periodically reconciled — promoted, merged, demoted, scoped down, or retired — and every pass leaves one dated line behind. `scripts/review_preferences.py` decides when a pass is due and lists the mechanically decidable items; the semantic merge stays with the agent.
 - **Summary**: `scripts/summary.py` produces a periodic quantitative report — library size and monthly growth, reuse ledger (retrievals, hit rate, hottest entries, **unmatched requests -> what to learn next**), preference counts, structural warnings. The ledger is appended by `retrieve.py` on every retrieval and is the only objective evidence of whether the agent actually consults the library.
@@ -46,8 +48,8 @@ library/
     ├── reference.png       # the original figure (personal reference only)
     ├── template.R / template.py   # self-contained dual templates, produce a figure with no arguments
     └── template_output_*   # template outputs, kept as known-good baselines
-references/                 # record schema, per-source ingestion, chart_types controlled vocabulary (~40 types), preference profile format, trigger hook
-scripts/                    # install_hook / init_library / build_index / retrieve / review_preferences / summary / export_figure / import_figure / verify_library
+references/                 # record schema, per-source ingestion, chart_types controlled vocabulary (~40 types), preference profile format, trigger hook, delivery checklist
+scripts/                    # install_hook / init_library / build_index / retrieve / review_preferences / summary / figure_manifest / export_figure / import_figure / verify_library
 ```
 
 The frontmatter is a deliberately narrow YAML subset (scalars, single-line lists, one nesting level) that parses reliably without a YAML library. Key fields: `chart_types` (controlled vocabulary), `data_shape` (input format in one line), `use_when` / `not_when` (semantic matching at reuse), `related` (links between functionally adjacent entries), `verified` (actual runs only).
@@ -72,6 +74,10 @@ python3 scripts/review_preferences.py                # consolidation report: mer
 python3 scripts/review_preferences.py --digest       # compact digest to paste into harness memory
 python3 scripts/summary.py --check                   # is a quantitative summary due? (exit 1 = yes)
 python3 scripts/summary.py --write                   # print the report and save library/SUMMARY.md
+
+# Figure manifest (for figure families)
+python3 scripts/figure_manifest.py figure/8.xxx --write      # create/refresh figure_manifest.csv (semantic columns preserved)
+python3 scripts/figure_manifest.py figure/8.xxx --check      # unregistered files / superseded figures -> exit 1
 
 # Cross-device entry migration (typical: learn figures locally while reading papers, reuse on a server)
 python3 scripts/export_figure.py 003 --with-related   # pack entries into a bundle (id / numeric prefix / all)

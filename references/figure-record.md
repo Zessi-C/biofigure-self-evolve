@@ -38,9 +38,9 @@ figures/NNN-slug/
 
 | 子字段 | 说明 |
 |---|---|
-| `type` | `paper` / `wechat` / `screenshot` / `manual`（manual = 复用流程中沉淀的原创画法） |
+| `type` | `paper` / `wechat` / `screenshot` / `project` / `manual`（`project` = 从项目历史脚本与成图学到的 house style；`manual` = 复用流程中沉淀的原创画法） |
 | `title` | 材料标题（论文名/文章标题/任务描述） |
-| `ref` | DOI、URL 或出处标识；无出处写 `original` |
+| `ref` | DOI、URL 或出处标识；`project` 类型写「绘图脚本路径 + 成图路径」；无出处写 `original` |
 | `panel` | 面板号（如 `Fig.2a`）；整图写 `full` |
 | `learned_date` | 学习日期 `YYYY-MM-DD` |
 
