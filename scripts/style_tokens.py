@@ -216,7 +216,12 @@ def emit_theme(canon: list, code_dir: str, out_path: str) -> str:
     for i, p in enumerate(canon):
         base = re.sub(r"[^A-Za-z0-9_.]", "_", p["name"])
         used[base] += 1
-        name = base if used[base] == 1 else f"{base}_v{used[base]}"
+        if used[base] == 1:
+            name = base
+        else:
+            # 重名色板带上来历后缀：迁移时一眼看出哪个脚本用的是哪一版
+            stem = re.sub(r"[^A-Za-z0-9_.]", "_", os.path.splitext(p["files"][0])[0])
+            name = f"{base}__{stem}"
         entries = []
         for c in p["colors"]:
             label = p["named"].get(c, "")
