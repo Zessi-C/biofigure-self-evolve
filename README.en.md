@@ -6,9 +6,11 @@ A self-evolving library and reuse engine for bioinformatics figures. The agent s
 
 ## How it works
 
+- **Trigger**: before producing, editing, replicating, or learning any bioinformatics/statistics figure, run `scripts/retrieve.py` against the library; state in the delivery which entry was reused (or that nothing matched); when delegating figure work to a subagent, pass the skill entry point or the retrieval result into the delegation prompt. When the skill description alone is not enough, install the short hook from `references/trigger-hook.md` into the project-level or global agent instructions.
 - **Learning**: send the agent a paper, PDF, article, or screenshot. It decides whether to record a single figure, a group, or a composite layout, and traces the original plotting code first (inline code > GitHub repo > paper DOI → PMC code availability); only without any code lead does it infer from the image, and the record says so.
 - **Reuse**: when you need a plot, it retrieves entries by `use_when` / `data_shape`, borrows the technical skeleton, and decides axes, thresholds, and colors against your current data. With several candidates it returns the top three, ranked by data shape match, then intent match, then verification status.
 - **Recycling**: a satisfying result becomes a new entry; feedback on an existing entry goes into its template defaults and is logged in the entry's evolution section; habits that recur across figures settle into `library/PREFERENCES.md`.
+- **Consolidation**: cross-figure preferences (`PREFERENCES.md`) and per-entry ones (each entry's reuse notes and evolution log) are periodically reconciled — promoted, merged, demoted, scoped down, or retired — and every pass leaves one dated line behind. `scripts/review_preferences.py` decides when a pass is due and lists the mechanically decidable items; the semantic merge stays with the agent.
 - **Migration**: entries can be packed into a bundle (zip with manifest and per-file checksums) and imported into another device's library; collisions can be skipped, overwritten, or renumbered. After importing into a new environment, run `verify_library.py` to re-check the templates.
 
 Completion of a learned entry is judged by a checklist. The record format is in [references/figure-record.md](references/figure-record.md); trigger behavior is in SKILL.md.
@@ -37,8 +39,8 @@ library/
     ├── reference.png       # the original figure (personal reference only)
     ├── template.R / template.py   # self-contained dual templates, produce a figure with no arguments
     └── template_output_*   # template outputs, kept as known-good baselines
-references/                 # record schema, per-source ingestion, chart_types controlled vocabulary (~40 types), preference profile format
-scripts/                    # init_library / build_index / export_figure / import_figure / verify_library
+references/                 # record schema, per-source ingestion, chart_types controlled vocabulary (~40 types), preference profile format, trigger hook
+scripts/                    # init_library / build_index / retrieve / review_preferences / export_figure / import_figure / verify_library
 ```
 
 The frontmatter is a deliberately narrow YAML subset (scalars, single-line lists, one nesting level) that parses reliably without a YAML library. Key fields: `chart_types` (controlled vocabulary), `data_shape` (input format in one line), `use_when` / `not_when` (semantic matching at reuse), `related` (links between functionally adjacent entries), `verified` (actual runs only).
@@ -51,6 +53,12 @@ The frontmatter is a deliberately narrow YAML subset (scalars, single-line lists
 python3 scripts/init_library.py    # initialize the library skeleton (idempotent; --path to place it elsewhere and write the config)
 python3 scripts/build_index.py     # rebuild the index in full with consistency checks; rerun after editing any figure.md
 python3 scripts/build_index.py --check      # only compare the index against the records (exit 1 on drift), writes nothing
+
+# Retrieval before reuse, and preference consolidation
+python3 scripts/retrieve.py "two-group volcano plot with pathway labels"   # top-K candidates + preference digest (--all browse / --json for subagents)
+python3 scripts/review_preferences.py --check        # is a consolidation pass due? (exit 1 = yes)
+python3 scripts/review_preferences.py                # consolidation report: merge/promote/demote/cross-entry/stale
+python3 scripts/review_preferences.py --digest       # compact digest to paste into harness memory
 
 # Cross-device entry migration (typical: learn figures locally while reading papers, reuse on a server)
 python3 scripts/export_figure.py 003 --with-related   # pack entries into a bundle (id / numeric prefix / all)

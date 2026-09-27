@@ -1,11 +1,22 @@
 ---
 name: biofigure-self-evolve
-description: 生物信息学 figure 的学习库与复用引擎：把文献、PDF、公众号文章、截图里的图解剖成可复用的画法（图表配方 + R/Python 双模板），存入本地自进化图库；材料带代码线索（GitHub 仓库、正文内嵌代码、论文 code availability）时必先追溯原始绘图代码作为配方事实源；用户做生信数据分析要画图时（无论明确点名图型，还是分析完成后需要呈现结果），先检索图库复用已学会的画法，相似候选多个时给出差异对比与推荐，没有才从头设计。Use whenever the user sends papers, PDFs, WeChat 公众号 article links, or figure screenshots containing plots, asks to learn a figure (学一下这个图 / 入库 / 记住这个画法), asks to replicate a figure's style (照这张图画 / 按文献风格复刻), wants any bioinformatics/biostatistics chart (heatmap, volcano, KM survival, boxplot, enrichment dotplot, oncoprint, Venn/UpSet, circos, Manhattan, UMAP/t-SNE, forest, ROC…), or asks what figures the library already knows (看看图库/你都会画什么图) — even if the user does not mention "figure 库".
+description: 画任何生信图之前先读本技能：写第一行绘图代码或把画图任务委派给子代理之前，先跑 retrieve.py 检索本地自进化图库、复用已学会的画法（多候选给差异对比与推荐），未命中才从头设计。覆盖一切生信/统计图（heatmap、volcano、KM 生存曲线、boxplot、enrichment dotplot、oncoprint、Venn/UpSet、circos、Manhattan、UMAP/t-SNE、forest、ROC、组合版式…）与文献/PDF/公众号/截图学图入库（图表配方 + R/Python 双模板，材料带代码线索时先追溯原始绘图代码）；也用于"看看图库/你都会画什么图"。委派子代理画图时必须把技能路径或检索结果写进委派提示。Use before writing or delegating ANY bioinformatics/biostatistics figure code.
 ---
 
 # Biofigure Memory — 生信 figure 学习库与复用引擎
 
 本技能维护一个**自进化**的个人图库：把用户发来的文献图（论文 PDF、链接、公众号文章、截图）解剖成「语言无关的绘制配方 + R/Python 可运行模板」沉淀下来；等用户真正要画图时，优先复用库里已学会的画法，而不是每次从零设计。用户对复用结果满意时，再把这次的画法回收入库，形成闭环。
+
+## 硬规则：画图前先过这道门（不可跳过）
+
+**触发面是"一切生信图"，不是"用户点名要学图"。** 只要本轮要产出、修改、复刻或学习任何生信/统计图——无论用户明确点名图型、说"把结果可视化一下"、还是分析跑完顺手要张图——都先做这三件事：
+
+1. **先检索再动手**：写第一行绘图代码之前，跑一次
+   `python3 <技能目录>/scripts/retrieve.py "<一句话需求>"`
+   它输出最相近的 ≤3 条配方 + 偏好摘要（比读整个 INDEX.json 便宜得多）。命中 → 按 B3 临摹式适配；未命中 → 才走普通设计流程，并在交付时说明"图库未命中"。
+   **"这张图很简单 / 我见过这种图 / 用户没提图库" 都不构成跳过检索的理由。**
+2. **交付时自证**：交付说明里必须有一句「复用了 `NNN-slug` 的 XX（按你的数据改了 YY）」或「图库未命中，按普通流程设计」。没写这句，就等于没检索——这是本技能唯一的验收点。
+3. **委派不丢技能**：把画图/改图/复刻/学图交给子代理（omp 的 task、dsh 的 subagent 等）时，委派提示必须二选一：① 给出技能入口（omp 写 `skill://biofigure-self-evolve`，其他 harness 写技能目录绝对路径），要求子代理先读再动手；② 直接把 `retrieve.py --json --no-preferences "<需求>"` 的候选结果（必要时再附上要遵守的偏好）粘进提示。父代理收工前检查子代理的交付说明里有没有第 2 条的句子——最常见的失手就是父代理查了库、子代理没查。
 
 技能只有两个模式，按用户意图选择：
 
@@ -29,8 +40,9 @@ description: 生物信息学 figure 的学习库与复用引擎：把文献、PD
 |---|---|
 | 明确要求学习/入库（"学一下这个图""记住这个画法"），材料为链接/PDF/公众号/截图 | 模式 A，直接执行，不再确认 |
 | 用户发来文献材料但未提学习，材料中有值得学的 figure | 一句话问是否入库（例："Fig.3 的点图画法不错，入库吗？"）；非交互不打扰 |
-| 明确要求画生信图（点名图型或描述意图，如"生存分析画条曲线"） | 模式 B，先查库再动手 |
-| 数据分析任务隐含出图需求（如差异分析跑完需要呈现结果） | 结果呈现前查库；命中按复用流程，未命中正常设计 |
+| 明确要求画生信图（点名图型或描述意图，如"生存分析画条曲线"） | 模式 B：先跑 `retrieve.py` 检索（硬规则第 1 条），再动手 |
+| 数据分析任务隐含出图需求（如差异分析跑完需要呈现结果） | 结果呈现前跑 `retrieve.py`；命中按复用流程，未命中正常设计 |
+| 要把画图/改图/复刻/学图委派给子代理 | 委派提示带上技能入口或 `retrieve.py --json` 结果（硬规则第 3 条），父代理收工前检查子代理是否照做 |
 | "照这张图画 / 按这篇文献风格复刻"（给了参考图或文献） | 参考图即规格：先按模式 A 学习它（这就是明确意图，无需再问），再按其配方对用户数据出图 |
 | 用户对刚交付的图表示满意 | 提议入库（manual 来源），同意即走模式 A |
 | 用户问"你都会画哪些图 / 看看图库" | 读 INDEX.md，按 chart_types 分组展示，不逐条展开 |
@@ -59,7 +71,7 @@ description: 生物信息学 figure 的学习库与复用引擎：把文献、PD
 ├── SKILL.md
 ├── library/                # 图库（与技能一起同步）
 │   ├── README.md
-│   ├── INDEX.json          # 机器可读索引，复用时先读这个
+│   ├── INDEX.json          # 机器可读索引，由 build_index.py 从各 figure.md 投影生成（检索走 scripts/retrieve.py）
 │   ├── INDEX.md            # 人类可读索引，由脚本生成
 │   └── figures/
 │       └── 001-volcano-pathway-labels/
@@ -89,7 +101,7 @@ description: 生物信息学 figure 的学习库与复用引擎：把文献、PD
 
 ### A0 查重与归位（相似功能图的处理）
 
-生信图大量"同功能、不同形"：火山图、MA 图、显著性条形图都在"展示两组差异"；KM 曲线、风险评分图、森林图都在"展示预后"。**判断近似的标准是"用户要它回答什么问题"，不是表面图类型。** 学习前先读 `INDEX.json`，找出与新材料功能近似的已有条目（chart_types 相同、或 use_when 语义相近），然后三选一：
+生信图大量"同功能、不同形"：火山图、MA 图、显著性条形图都在"展示两组差异"；KM 曲线、风险评分图、森林图都在"展示预后"。**判断近似的标准是"用户要它回答什么问题"，不是表面图类型。** 学习前先 `retrieve.py --all`（或读 `INDEX.json`），找出与新材料功能近似的已有条目（chart_types 相同、或 use_when 语义相近），然后三选一：
 
 - **更新已有条目**：新材料是同一画法的更清晰版本或细节补充 → 合并进旧条目（交互环境先问；非交互环境在新旧明显同款时默认更新）
 - **登记为变体**：核心画法相同但有实质差异（如带风险表的 KM vs 纯 KM 曲线）→ 新建条目，新旧双方 frontmatter 互写 `related`，并各自在正文「与相近条目的对比」一句话写清何时用谁——这是复用时多候选排序的依据
@@ -181,7 +193,20 @@ description: 生物信息学 figure 的学习库与复用引擎：把文献、PD
 
 ### B1 检索
 
-读 `INDEX.json`（缺失、或 `python3 <技能目录>/scripts/build_index.py --check` 报不一致时，先跑 `build_index.py` 重建）和 `library/PREFERENCES.md`（若存在）。索引用语义匹配而非纯关键词：综合 `chart_types` + `data_shape` + `use_when`/`not_when` + `aliases` 判断哪条记录符合用户当前的数据和意图；偏好档案记录着用户跨会话的稳定习惯，供 B3 实例化时填充其未指定的细节。
+首选跑脚本——一次调用同时拿到候选与偏好摘要，比读整个索引省得多：
+
+```bash
+python3 <技能目录>/scripts/retrieve.py "用户要画什么，一两句"
+```
+
+- **命中**：读第 1 名（有多个候选时按 B2 排序）的 `figure.md`，重点是「配方」「复用要点」「与相近条目的对比」三节
+- **未命中**：脚本会明说。此时才按普通流程从头设计，交付满意后再提议入库（B4）
+- **要浏览全库**：`retrieve.py --all`（按 chart_types 分组）；**要把结果交给子代理**：`--json`
+- 可用 `--chart volcano --lang R` 先按受控词/语言过滤，再语义排序
+
+脚本直接扫各 `figure.md`，永远比索引新，因此不必先建索引。若确实要手工读 `INDEX.json`，先跑 `python3 <技能目录>/scripts/build_index.py --check` 确认索引与记录一致，不一致就先重建。检索用的语义匹配综合 `chart_types` + `data_shape` + `use_when`/`not_when` + `aliases`，判断哪条记录符合用户当前的数据和意图。
+
+`library/PREFERENCES.md` 的稳定偏好已包含在 `retrieve.py` 输出里（B3 实例化时用它填充用户未指定的细节），不必再单独读一遍；需要原文时直接读文件。
 
 ### B2 多候选排序与选择
 
@@ -214,6 +239,39 @@ description: 生物信息学 figure 的学习库与复用引擎：把文献、PD
 - **写回偏好**（跨图习惯，"图库越长越像你"的另一机制）：凡观察到合法偏好信号——用户明确的适配选择（"阈值用 1.5"）、对成图的反馈（"图例放上面"）、主动声明的习惯（"以后都要 PDF"）——按 `references/preference-profile.md` 追加进 `library/PREFERENCES.md`（先记单次观察，≥2 次一致晋升稳定偏好）。只记可观察信号，禁止脑补；没有信号就不写
 - **未命中**：按普通流程从头设计这张图（不要硬套相近条目），正常交付。交付后若用户表示满意，主动提议：「要不要把这次的画法入库？」→ 走模式 A 沉淀（source.type=manual，ref 记本次任务描述；manual 条目的 reference.png 存**交付的成图**，没有原文献图）。这是图库进化的主要入口之一
 
+## 偏好整理：整体偏好 ↔ 部分偏好（定期）
+
+偏好会从两个方向长出来，不整理就会膨胀、互相矛盾、越用越不像你：
+
+- **整体偏好** = `library/PREFERENCES.md`：跨图型的稳定习惯（配色体系、导出规格、英文/字号约定……）
+- **部分偏好** = 各条目 `figure.md` 的「复用要点」「演化记录」：只服务这一张/这一族图的结论
+
+两者的关系不是固定的：一条规则若在多个条目里反复出现，就该晋升为整体偏好；一条整体偏好若只服务某一图型，就该下沉到对应条目。**判断标准是适用范围，不是写在哪里。**
+
+**什么时候整理**：每次模式 A/B 交付收尾时顺手跑一次
+
+```bash
+python3 <技能目录>/scripts/review_preferences.py --check
+```
+
+退出码 1 = 该整理了，**在本回合内做完，不要留给下次**。到期条件由脚本判定：距上次整理 >30 天、稳定偏好 ≥12 行、单次观察 ≥15 条、自上次整理新增 ≥8 条演化记录，或出现容量/格式/升降级问题。用户也可能直接说"整理一下偏好/图库偏好太乱了"——同样按本节走。
+
+**整理五步**（脚本给机械可判定的部分，语义判断归你；完整规范见 `references/preference-profile.md`）：
+
+1. **通读**：脚本只抓字面近似与硬指纹 token，同一件事的两种写法靠通读发现
+2. **晋升**：单次观察累计 ≥2 次且互不矛盾 → 移入稳定偏好，累加次数与日期
+3. **合并**：说同一件事的多行合并为一条（日期与次数累加，别丢证据）
+4. **降级/推翻**：稳定偏好里只出现 1 次、或已被新反馈推翻的 → 降回单次观察并注明原因
+5. **下沉/清退**：只服务单一图型/项目的偏好 → 下沉到该条目「复用要点」；>60 天未复现的单次观察 → 清退
+
+**收口三件事**：
+
+- 在 `PREFERENCES.md` 的 `## 整理记录` 追加一行：`- YYYY-MM-DD 整理：晋升 N、合并 N、降级 N、清退 N、下沉 N`
+- 动过任何 `figure.md` 就跑 `scripts/build_index.py` 重建索引
+- 若 harness 的原生记忆或托管技能里另存了一份同类偏好（例如 omp 的 `managed-skills/*` 里有绘图约定副本），用 `review_preferences.py --digest` 刷新那份副本——同一份偏好存两处，早晚会漂移（改了一处、忘了另一处）
+
+整理只动 `PREFERENCES.md` 与条目文件，**不改「视觉解剖」**（那是原图的客观事实）。
+
 ## 跨设备导出/导入
 
 典型场景：在个人电脑读文献学图，在服务器上跑分析时用。条目以单文件 **bundle**（zip，内含清单与逐文件 sha256）迁移；技能只管打包与解包，传输用 scp / rsync 等任意手段。
@@ -243,6 +301,8 @@ python3 <技能目录>/scripts/import_figure.py bundle.zip          # 校验完�
 ## 维护
 
 - `scripts/init_library.py [--path DIR]`：初始化图库骨架（幂等）；用 `--path` 指定非默认位置时自动写入 `~/.config/biofigure-self-evolve/config.json`
+- `scripts/retrieve.py "<需求>"`：模式 B 的检索入口——直接扫 figure.md，输出 top-K 候选 + 偏好摘要；`--all` 浏览、`--json` 给子代理、`--chart/--lang` 预过滤、`--preferences-only` 只要偏好
+- `scripts/review_preferences.py`：偏好整理审计——容量/格式/重复/晋升降级/跨条目复现/过期未复现/条目内堆积；`--check` 判到期（退出码 1）、`--digest` 出可粘贴进 harness 记忆的摘要、`--json` 给 agent 逐项执行。只读不写
 - `scripts/build_index.py [--library DIR]`：扫描所有 `figures/*/figure.md`，重建 INDEX.json + INDEX.md（无 PyYAML 也能跑），并告警缺字段、id 与目录名不一致、related 悬空、languages 与模板文件不符、reference.png 缺失或超 2MB；手动改过 figure.md 后运行
 - `scripts/build_index.py --check`：只比对索引与记录是否一致（不一致退出码 1），不写文件；模式 B 检索前的快速新鲜度判定
 - `scripts/export_figure.py <id...>` / `scripts/import_figure.py <bundle.zip>`：跨设备迁移条目，见「跨设备导出/导入」节
@@ -259,4 +319,5 @@ python3 <技能目录>/scripts/import_figure.py bundle.zip          # 校验完�
 | `references/figure-record.md` | 模式 A 写记录前、模式 B 需要看字段含义时（必读） |
 | `references/ingest-sources.md` | 模式 A 第一步取图前（必读） |
 | `references/chart-taxonomy.md` | 模式 A 打标签、模式 B 检索匹配时 |
-| `references/preference-profile.md` | 模式 B 读写 `PREFERENCES.md` 前 |
+| `references/preference-profile.md` | 模式 B 读写 `PREFERENCES.md` 前、做偏好整理时（必读） |
+| `references/trigger-hook.md` | 用户抱怨"agent 老是不查图库"时：把触发钩子装进项目级/全局 agent 指令 |

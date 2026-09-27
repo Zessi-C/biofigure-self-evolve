@@ -6,9 +6,11 @@
 
 ## 工作方式
 
+- **触发**：任何生信/统计图的产出、修改、复刻、学习，动手前先跑 `scripts/retrieve.py` 检索图库；交付时说明"复用了哪条/未命中"；把画图任务委派给子代理时，把技能入口或检索结果写进委派提示。描述里写不下这么长的触发条件时，把 `references/trigger-hook.md` 的短钩子装进项目级/全局 agent 指令。
 - **学习**：把文献、PDF、文章、截图发给 agent，它判断按单图、成组还是组合版式记录，并优先追溯原始绘图代码（正文内嵌代码 > GitHub 仓库 > 论文 DOI → PMC code availability），都找不到才看图反推且如实标注；
 - **复用**：画图时按 `use_when` / `data_shape` 检索相近条目，借鉴其技术骨架，轴、阈值、配色按当前数据重新决定；多候选时按数据形状 > 意图 > 验证状态排序取前三；
 - **回流**：满意的结果回收为新条目；对已有条目的意见写入其模板缺省值并记入演化记录；跨图反复出现的习惯沉淀到 `library/PREFERENCES.md`。
+- **整理**：整体偏好（`PREFERENCES.md`）与部分偏好（各条目「复用要点」「演化记录」）定期收口——晋升、合并、降级、下沉、清退，并给每次整理留一行记录；`scripts/review_preferences.py` 判到期并列出机械可判定的必做项，语义合并由 agent 判断。
 - **迁移**：条目可打包成 bundle（zip，带清单与逐文件校验和）导入其他设备的图库，冲突可跳过/覆盖/换编号；新环境导入后跑 `verify_library.py` 体检。
 
 学习是否完成由完工清单判定。记录格式见 [references/figure-record.md](references/figure-record.md)，触发行为见 SKILL.md。
@@ -37,8 +39,8 @@ library/
     ├── reference.png       # 原图参考（仅个人学习用）
     ├── template.R / template.py   # 自包含双模板，无参数运行即出图
     └── template_output_*   # 模板运行产物，作为已知良好输出
-references/                 # 记录 schema、各来源取图方法、chart_types 受控词表（近 40 种）、偏好档案格式
-scripts/                    # init_library / build_index / export_figure / import_figure / verify_library
+references/                 # 记录 schema、各来源取图方法、chart_types 受控词表（近 40 种）、偏好档案格式、触发钩子
+scripts/                    # init_library / build_index / retrieve / review_preferences / export_figure / import_figure / verify_library
 ```
 
 frontmatter 是刻意收窄的 YAML 子集（标量、单行列表、一层嵌套），没有 YAML 库的环境也能可靠解析。关键字段：`chart_types`（受控词表选词）、`data_shape`（一行写清输入格式）、`use_when` / `not_when`（复用时的语义匹配依据）、`related`（同功能条目互指）、`verified`（只认实际运行结果）。
@@ -51,6 +53,12 @@ frontmatter 是刻意收窄的 YAML 子集（标量、单行列表、一层嵌�
 python3 scripts/init_library.py    # 初始化图库骨架（幂等；--path 可放别处并自动写配置）
 python3 scripts/build_index.py     # 全量重建索引并做一致性校验；改过任何 figure.md 后必须重跑
 python3 scripts/build_index.py --check      # 只比对索引与记录是否一致（不一致退出码 1），不写文件
+
+# 复用前检索与偏好整理
+python3 scripts/retrieve.py "两组差异火山图，要标通路"      # top-K 候选 + 偏好摘要（--all 浏览 / --json 给子代理）
+python3 scripts/review_preferences.py --check                # 偏好是否到该整理的节律（退出码 1 = 该整理）
+python3 scripts/review_preferences.py                        # 出整理报告：合并/晋升/降级/跨条目复现/过期未复现
+python3 scripts/review_preferences.py --digest               # 输出可粘贴进 harness 记忆的偏好摘要
 
 # 跨设备迁移条目（典型：本机读文献学图 → 服务器跑分析复用）
 python3 scripts/export_figure.py 003 --with-related   # 打包条目为 bundle（id/数字前缀/all 均可）
