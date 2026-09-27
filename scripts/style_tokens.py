@@ -9,6 +9,7 @@
     style_tokens.py CODE_DIR                      # 体检报告：色板清单、重复定义、主题/尺寸分布
     style_tokens.py CODE_DIR --emit 00.figure_theme.R   # 生成共享 theme 文件
     style_tokens.py CODE_DIR --json
+    style_tokens.py CODE_DIR --migrate FILE --apply     # 把 FILE 的本地色板定义改成引用 theme（自动备份）
     style_tokens.py CODE_DIR --glob "*.R" --glob "*.py"
 
 只读 + 生成一个新文件；不改任何既有脚本。
@@ -16,6 +17,7 @@
 import argparse
 import collections
 import datetime
+import difflib
 import json
 import os
 import re
@@ -274,6 +276,88 @@ def emit_theme(canon: list, code_dir: str, out_path: str) -> str:
     return "\n".join(L)
 
 
+
+# ---------------------------------------------------------------- 迁移
+
+def plan_migration(path: str, canon: list, theme_rel: str) -> tuple:
+    """把目标脚本里"与 theme 里某套色板完全一致"的本地定义替换成 biofigure_pal()。
+
+    只替换色号集合**完全一致**的定义——不一致的（同名不同色）绝不自动改，报出来让人判断。
+    返回 (新文本, 变更列表, 未自动处理的同名冲突)。
+    """
+    text = read(path)
+    by_colors = {tuple(p["colors"]): p for p in canon if not p["anonymous"]}
+    changes, conflicts = [], []
+    for m in list(PALETTE_START.finditer(text)):
+        name = m.group(1)
+        body = _balanced_body(text, m.end() - 1)
+        colors = HEX.findall(body)
+        if not name or len(colors) < 2:
+            continue
+        hit = by_colors.get(tuple(colors))
+        if not hit:
+            # 色号集合与 theme 不匹配：可能是同名不同色，必须人工判断
+            same_name = [p for p in canon if p["name"] == name]
+            if same_name:
+                conflicts.append((name, len(colors), [len(p["colors"]) for p in same_name]))
+            continue
+        start = m.start()
+        end = m.end() + len(body) + 1
+        old = text[start:end]
+        new = f'{name} <- biofigure_pal("{hit["name"]}")'
+        text = text[:start] + new + text[end:]
+        changes.append((name, hit["name"], len(colors)))
+
+    if changes and f'"{theme_rel}"' not in text and f"'{theme_rel}'" not in text:
+        lines = text.split("\n")
+        idx = 0
+        for i, line in enumerate(lines[:60]):
+            if re.match(r"\s*library\s*\(", line):
+                idx = i + 1
+        lines.insert(idx, f'source("{theme_rel}")  # 项目绘图样式单一事实源（biofigure style_tokens.py 生成）')
+        text = "\n".join(lines)
+    return text, changes, conflicts
+
+
+def do_migrate(code_dir: str, target: str, canon: list, apply: bool) -> int:
+    target = os.path.abspath(os.path.expanduser(target))
+    if not os.path.isfile(target):
+        print(f"错误: 不是文件 {target}", file=sys.stderr)
+        return 1
+    theme = os.path.join(code_dir, "00.figure_theme.R")
+    if not os.path.exists(theme):
+        print(f"错误: 先跑 --emit 生成 {theme}", file=sys.stderr)
+        return 1
+    theme_rel = os.path.relpath(theme, os.path.dirname(target))
+    new_text, changes, conflicts = plan_migration(target, canon, theme_rel)
+    if not changes:
+        print(f"{os.path.basename(target)}: 没有可自动迁移的色板定义（色号集合与 theme 不一致或没有本地定义）")
+        for name, got, opts in conflicts:
+            print(f"  ⚠ `{name}` 本地 {got} 色，theme 里有 {opts} 色的同名版本 —— 需人工判断，不自动改")
+        return 0
+    diff = list(difflib.unified_diff(read(target).splitlines(), new_text.splitlines(),
+                                     fromfile=os.path.basename(target) + "（原）",
+                                     tofile=os.path.basename(target) + "（迁移后）", lineterm="", n=1))
+    print("\n".join(diff[:80]))
+    if len(diff) > 80:
+        print(f"…（diff 共 {len(diff)} 行）")
+    for name, hit, n in changes:
+        print(f"  {name}（{n} 色）→ biofigure_pal(\"{hit}\")")
+    for name, got, opts in conflicts:
+        print(f"  ⚠ `{name}` 本地 {got} 色、theme 同名版本 {opts} 色 —— 不自动改")
+    if not apply:
+        print("\n（dry-run；确认 diff 后加 --apply 写盘，会自动备份 .bak-<日期>）")
+        return 0
+    bak = target + ".bak-" + datetime.date.today().strftime("%Y%m%d")
+    with open(bak, "w", encoding="utf-8") as fh:
+        fh.write(read(target))
+    with open(target, "w", encoding="utf-8") as fh:
+        fh.write(new_text)
+    print(f"\n已写盘（备份 {os.path.basename(bak)}）。**必须重跑这个脚本并对比成图**——"
+          "迁移只保证色号一致，运行是否正常要靠实跑确认。")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -282,6 +366,8 @@ def main() -> int:
                         help="文件匹配（可重复，默认 *.R；Python 项目用 --glob '*.py'）")
     parser.add_argument("--emit", metavar="PATH", help="生成共享 theme 文件到该路径")
     parser.add_argument("--json", action="store_true", help="输出 JSON")
+    parser.add_argument("--migrate", metavar="FILE", help="把该脚本的本地色板定义改成引用 theme")
+    parser.add_argument("--apply", action="store_true", help="配合 --migrate：真正写盘（默认 dry-run）")
     args = parser.parse_args()
 
     code_dir = os.path.abspath(os.path.expanduser(args.code_dir))
@@ -296,6 +382,9 @@ def main() -> int:
 
     scans = [scan_file(p, code_dir) for p in files]
     canon = canonical_palettes(scans)
+
+    if args.migrate:
+        return do_migrate(code_dir, args.migrate, canon, args.apply)
 
     if args.emit:
         out = os.path.abspath(os.path.expanduser(args.emit))
