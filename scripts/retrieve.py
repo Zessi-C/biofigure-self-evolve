@@ -12,6 +12,7 @@ B1 检索，不需要再单独读两个大文件。
     retrieve.py --all                              # 无明确需求时按 chart_types 分组浏览
     retrieve.py --preferences-only                 # 只输出偏好摘要（写 harness 记忆用）
     retrieve.py "热图" --chart heatmap --lang R    # 先按受控词/语言过滤再排序
+    retrieve.py --record-used 013-milo-da-dualtrack-profile --task "四队列组成图"   # 交付回执：记下最终用了哪条
 
 退出码: 0 正常（含"未命中"）；1 图库不可用或参数错误。
 """
@@ -119,6 +120,25 @@ def fmt_candidate(idx: int, s: float, hits: list, warns: list, rec: dict, root: 
     return "\n".join(lines)
 
 
+def append_usage(root: str, rec: dict) -> None:
+    """追加一行台账；写失败（只读库、磁盘满）绝不影响主流程。"""
+    try:
+        with open(os.path.join(root, USAGE_FILE), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def log_delivery(root: str, entry: str, task: str, query: str) -> None:
+    """交付回执：最终采用了哪条条目。有了它才能算"条目级采用率"，并暴露
+    "检索命中却从来不用"（配方不好用）与"用了但检索没命中"（排序/关键词有问题）。"""
+    append_usage(root, {
+        "kind": "delivery",
+        "ts": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "entry": entry, "task": task, "query": query,
+    })
+
+
 def log_usage(root: str, query: str, top: list, n_records: int) -> None:
     """把这次检索追加进 library/USAGE.jsonl —— 定期总结的定量基础。
 
@@ -127,6 +147,7 @@ def log_usage(root: str, query: str, top: list, n_records: int) -> None:
     """
     try:
         rec = {
+            "kind": "retrieval",
             "ts": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
             "query": query,
             "hit": bool(top),
@@ -135,8 +156,7 @@ def log_usage(root: str, query: str, top: list, n_records: int) -> None:
             "candidates": [t[3]["id"] for t in top],
             "n_records": n_records,
         }
-        with open(os.path.join(root, USAGE_FILE), "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        append_usage(root, rec)
     except OSError:
         pass
 
@@ -156,6 +176,9 @@ def main() -> int:
     parser.add_argument("--no-preferences", action="store_true",
                         help="不附偏好摘要（只想要候选时用，输出更短，适合塞进子代理的委派提示）")
     parser.add_argument("--json", action="store_true", help="输出 JSON（便于传给子代理）")
+    parser.add_argument("--record-used", metavar="ENTRY_ID",
+                        help="交付回执：记下本次最终采用了哪条条目（写入 USAGE.jsonl，不执行检索）")
+    parser.add_argument("--task", default="", help="配合 --record-used 记录任务描述")
     parser.add_argument("--no-log", action="store_true",
                         help="不把本次检索写进 library/USAGE.jsonl（默认写，作为定期总结的定量台账）")
     args = parser.parse_args()
@@ -171,6 +194,22 @@ def main() -> int:
         records = [r for r in records if args.chart in _as_list(r["chart_types"])]
     if args.lang:
         records = [r for r in records if args.lang in _as_list(r["languages"])]
+
+    if args.record_used:
+        known = {r["id"] for r in records}
+        entry = args.record_used.strip()
+        match = [i for i in known if i == entry] or [i for i in known if i.startswith(entry)]
+        if not match:
+            print(f"错误: 图库里没有条目匹配 {entry!r}（用 retrieve.py --all 看全部 id）", file=sys.stderr)
+            return 1
+        if len(match) > 1:
+            print(f"错误: {entry!r} 匹配多个条目：{', '.join(sorted(match)[:6])}，请写完整 id", file=sys.stderr)
+            return 1
+        log_delivery(root, match[0], args.task, " ".join(args.query).strip())
+        print(f"已记录交付回执：{match[0]}"
+              + (f"（任务：{args.task}）" if args.task else ""))
+        print("台账: " + os.path.join(root, USAGE_FILE))
+        return 0
 
     prefs = {} if (args.no_preferences and not args.preferences_only) else preference_digest(root)
 

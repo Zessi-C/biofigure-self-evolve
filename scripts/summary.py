@@ -6,8 +6,9 @@
 - 本脚本管**整体定量总结**：图库规模与增长、复用台账（命中率、热度、未命中需求）、
   偏好计数、自动可判定的待办，以及"该不该现在总结"的节律判定。
 
-复用台账来自 `library/USAGE.jsonl`（retrieve.py 每次检索自动追加一行）。台账同时回答
-"agent 到底有没有在查图库"——只靠感觉判断这件事是不可靠的。
+复用台账来自 `library/USAGE.jsonl`：`retrieve.py` 每次检索追加一行（kind=retrieval），
+交付时用 `retrieve.py --record-used <id>` 追加一行（kind=delivery）。台账同时回答
+"agent 到底有没有在查图库""哪条配方被检索到却从来不用"——只靠感觉判断这件事是不可靠的。
 
 用法:
     summary.py                 # 出人读报告（默认窗口 30 天）
@@ -96,9 +97,19 @@ def analyze(root: str, days: int, top: int) -> dict:
     def _ts(rec):
         return str(rec.get("ts", ""))[:10]
 
-    recent = [u for u in usage if _ts(u) >= cutoff]
+    retrievals = [u for u in usage if u.get("kind", "retrieval") == "retrieval"]
+    deliveries = [u for u in usage if u.get("kind") == "delivery"]
+    recent = [u for u in retrievals if _ts(u) >= cutoff]
     hits = [u for u in recent if u.get("hit")]
     misses = [u for u in recent if not u.get("hit")]
+    recent_deliveries = [d for d in deliveries if _ts(d) >= cutoff]
+    adopted = collections.Counter(d.get("entry") for d in recent_deliveries if d.get("entry"))
+    offered = collections.Counter()
+    for u in recent:
+        for c in (u.get("candidates") or []):
+            offered[c] += 1
+    never_used = [(e, n) for e, n in offered.most_common() if n >= 2 and not adopted.get(e)]
+    used_but_missed = [e for e in adopted if not offered.get(e)]
 
     # 未命中需求 → 待学候选（按归一化文本归并；互相包含的算同一条，如"KM 生存曲线"⊂"KM 生存曲线带风险表"）
     miss_groups = {}
@@ -182,6 +193,9 @@ def analyze(root: str, days: int, top: int) -> dict:
         "reference_bytes": ref_bytes,
         "largest_reference": [{"name": n, "bytes": s} for s, n in biggest[:3]],
         "usage_total": len(usage), "usage_recent": len(recent),
+        "delivery_total": len(deliveries), "delivery_recent": len(recent_deliveries),
+        "adopted_entries": adopted.most_common(top),
+        "never_used": never_used[:top], "used_but_missed": used_but_missed[:top],
         "hits_recent": len(hits), "misses_recent": len(misses),
         "hit_rate_recent": round(len(hits) / len(recent), 3) if recent else None,
         "hot_entries": hot.most_common(top),
@@ -238,6 +252,18 @@ def render(rep: dict, top: int) -> str:
                          + (f"　样本：{extra}" if extra else ""))
         else:
             L.append("- 窗口内没有未命中需求")
+        if rep["delivery_total"] == 0:
+            L.append("- 交付回执：无。交付时没跑 `retrieve.py --record-used <id>`，"
+                     "条目级采用率与「命中却不用」就统计不出来")
+        else:
+            L.append(f"- 交付回执：累计 {rep['delivery_total']} 次（窗口内 {rep['delivery_recent']} 次）")
+            if rep["adopted_entries"]:
+                L.append("  - 采用最多：" + "、".join(f"{k} ×{v}" for k, v in rep["adopted_entries"]))
+            if rep["never_used"]:
+                L.append("  - **命中却从未采用**（进过候选 ≥2 次、一次没交付）→ 配方可能不好用或排序有问题："
+                         + "、".join(f"{k}×{v}" for k, v in rep["never_used"]))
+            if rep["used_but_missed"]:
+                L.append("  - **采用但检索没命中**（关键词/排序有问题）：" + "、".join(rep["used_but_missed"]))
     L.append("")
 
     p = rep["preferences"]

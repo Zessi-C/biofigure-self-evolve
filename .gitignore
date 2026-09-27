@@ -21,3 +21,6 @@ library/PREFERENCES.md
 library/USAGE.jsonl
 library/SUMMARY.md
 library/SUMMARY.json
+
+# 偏好候选是从会话历史挖出的工作底稿，不是长期资产
+library/FEEDBACK-CANDIDATES.md

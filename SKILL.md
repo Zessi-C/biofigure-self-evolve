@@ -134,7 +134,15 @@ python3 <技能目录>/scripts/install_hook.py --project /path/to/项目   # omp
 2. **学"这套项目的做法"而不是抄一张图**：配色语义、尺寸与字号层级、分面/拼合策略、导出规格、命名与目录约定——这些跨图复用价值最高
 3. 记录时 `source.type: project`（见 `references/figure-record.md`），`source.ref` 写脚本路径 + 成图路径；`reference.png` 存该项目的成图（注意脱敏）
 4. **与文献条目的关系**：同一画法若已有文献条目，项目版本通常是它的"落地变体" → 按 A0 登记为变体并 `related` 互指，在对比句里写清"项目 house style vs 原文献画法"的区别
-5. 学完顺手把跨图的那些约定（配色语义、尺寸、命名、目录）按 `references/preference-profile.md` 写进 `PREFERENCES.md` 并标适用范围——它们是项目级偏好，不是全图型通用规则
+5. **把 house style 变成跑不掉的约束**（比写进偏好更硬）：
+
+```bash
+python3 <技能目录>/scripts/style_tokens.py <项目>/code            # 体检：色板清单、重复定义、主题/尺寸分布
+python3 <技能目录>/scripts/style_tokens.py <项目>/code --emit <项目>/code/00.figure_theme.R
+```
+
+   真实项目里同一套配色/主题/尺寸往往在几十个脚本里各写一遍（本项目 26 个绘图脚本、652 处色值、144 个唯一色号、基础主题混用 classic/bw/void）。生成共享 theme 文件后，新脚本 `source()` 它，旧脚本逐个迁移（迁移一个跑一个，别一次全改）；条目与 `PREFERENCES.md` 只指向这个文件。
+6. 学完顺手把跨图的那些约定（配色语义、尺寸、命名、目录）按 `references/preference-profile.md` 写进 `PREFERENCES.md` 并标适用范围——它们是项目级偏好，不是全图型通用规则
 
 ### A1 获取图像并确定学习单元
 
@@ -286,14 +294,29 @@ python3 <技能目录>/scripts/retrieve.py "用户要画什么，一两句"
 2. 发现问题 → 改 → **复看**，直到清单全过；改完不看就交付等于没做
 3. 交付说明里写**看到了什么**（"y 轴标签原与分面标题重叠，已改竖排并复看确认"），不能只写"已检查"
 4. 无图像读取能力时退化为文件级检查（`figure_manifest.py` 看尺寸/像素/页数），并**如实说明"未能目视"**
-5. 图族/批量图：统一自检一遍，并更新图件清单：
+5. 图族/批量图：统一自检一遍，并更新图件清单（③ 增量重导也靠它）：
 
 ```bash
 python3 <技能目录>/scripts/figure_manifest.py <图件目录> --write   # 生成/更新 figure_manifest.csv
 python3 <技能目录>/scripts/figure_manifest.py <图件目录> --check   # 被取代的旧图/残留 → 退出码 1
+python3 <技能目录>/scripts/figure_manifest.py <图件目录> --diff 旧清单.csv --only unchanged   # hash 没变 → 可跳过重导
+python3 <技能目录>/scripts/pair_check.py <图件目录> --tables <项目>/table   # 图-表同源核验
 ```
 
-清单里 `entry_reused` 一列填复用了哪条配方，与脚本头部的 `# Biofigure <id> — <要点>` 注释、交付说明三处对齐——"参考了什么"必须可追溯。
+清单里 `entry_reused` 填复用了哪条配方（与脚本头部的 `# Biofigure <id> — <要点>` 注释、交付说明三处对齐），`source_table` 填这张图的数据来源表——图-表同源靠 `pair_check.py` 核验（表存在/非空/无孤儿表）。
+
+6. **交付回执**（让"用了哪条"可统计，也让"命中却从来不用"暴露出来）：
+
+```bash
+python3 <技能目录>/scripts/retrieve.py --record-used <条目 id> --task "<任务一句话>"
+```
+
+7. **要交出去的图/进正文的图，走一次对抗式验收**（自己检查自己有盲区）：把 `qa_prompt.py` 生成的提示交给一个只做验收、不许改代码的子代理：
+
+```bash
+python3 <技能目录>/scripts/qa_prompt.py <图件目录> --task "<这批图干什么用>" --entry <条目 id> --out /tmp/qa.md
+# 然后把这个文件内容作为 task/subagent 的 prompt 传下去
+```
 
 ## 定期总结与整理（交付收尾自检）
 
@@ -316,6 +339,17 @@ python3 <技能目录>/scripts/summary.py --check              # 定量总结到
 台账来自 `library/USAGE.jsonl`：`retrieve.py` 每次检索自动追加一行（`--no-log` 可关）。**"agent 到底有没有在查图库"只能靠台账回答，不要靠感觉**——如果台账长期为空而你明明画过图，说明触发环节出了问题，去跑 `install_hook.py`。
 
 到期条件：距上次总结 >30 天，或自上次总结新增 ≥20 条检索记录。报告落 `library/SUMMARY.md`，状态记 `library/SUMMARY.json`（都是个人数据，不入公开仓库）。**未命中需求反复出现时**，那是该学的新图型 → 问用户要不要现在学（模式 A）。
+
+### 偏好候选从哪来（⑤）
+
+偏好的真实来源是多轮改图。除了当场写回，还可以定期从会话历史里挖：
+
+```bash
+python3 <技能目录>/scripts/mine_feedback.py --since 2026-08-01 --min-count 2
+# → <图库>/FEEDBACK-CANDIDATES.md：把用户"再改/还是不对/不要/改成"的原话聚类排频
+```
+
+它**只产出候选，不写偏好**。逐条判断归属（跨图型通用 → 稳定偏好；只服务某项目/图型 → 下沉到条目并标适用范围；一次性要求 → 丢弃），判断完删掉候选文件，并在 `## 整理记录` 留一行。
 
 ### 整理：整体偏好 ↔ 部分偏好
 
@@ -376,7 +410,11 @@ python3 <技能目录>/scripts/import_figure.py bundle.zip          # 校验完�
 - `scripts/retrieve.py "<需求>"`：模式 B 的检索入口——直接扫 figure.md，输出 top-K 候选 + 偏好摘要；`--all` 浏览、`--json` 给子代理、`--chart/--lang` 预过滤、`--preferences-only` 只要偏好
 - `scripts/install_hook.py`：把常驻触发钩子写进 agent 指令层（幂等，成对注释块，`--check/--uninstall/--dry-run`，`--project DIR` 装项目级 AGENTS.md）；技能装完就跑它
 - `scripts/summary.py`：定量总结——图库规模与月度增长、复用台账（命中率/热度/未命中需求）、偏好计数、结构告警；`--check` 判到期（退出码 1）、`--write` 落盘 SUMMARY.md、`--json` 给 agent。只读（`--write` 除外）
-- `scripts/figure_manifest.py <图件目录>`：图件清单——扫描 pdf/png/jpg 记录体积、页数/像素、时间、校验和，语义列（`figure_set`/`entry_reused`/`note`）更新时保留；`--write` 写 `figure_manifest.csv`、`--check` 报未登记文件与被取代的旧图（退出码 1）
+- `scripts/style_tokens.py <代码目录>`：绘图样式体检 + `--emit` 生成共享 theme 文件（色板去重、统一主题与导出函数）；不改既有脚本
+- `scripts/qa_prompt.py <图件目录>`：生成"图件 QA 子代理"的委派提示（内联交付清单，子代理无需读技能目录）
+- `scripts/mine_feedback.py`：从会话历史挖用户纠偏，产出偏好候选清单（只产出候选，不写偏好）
+- `scripts/pair_check.py <图件目录> --tables <表格目录>`：图-表同源核验（每张图有 source_table、表存在非空、无孤儿表）
+- `scripts/figure_manifest.py <图件目录>`：图件清单——扫描 pdf/png/jpg 记录体积、页数/像素、时间、校验和，语义列（`figure_set`/`entry_reused`/`note`）更新时保留；`--write` 写 `figure_manifest.csv`、`--check` 报未登记文件与被取代的旧图（退出码 1）、`--diff 旧清单.csv` 给增量重导（哪些新增/消失/内容变了/内容没变）
 - `scripts/review_preferences.py`：偏好整理审计——容量/格式/重复/晋升降级/跨条目复现/过期未复现/条目内堆积；`--check` 判到期（退出码 1）、`--digest` 出可粘贴进 harness 记忆的摘要、`--json` 给 agent 逐项执行。只读不写
 - `scripts/build_index.py [--library DIR]`：扫描所有 `figures/*/figure.md`，重建 INDEX.json + INDEX.md（无 PyYAML 也能跑），并告警缺字段、id 与目录名不一致、related 悬空、languages 与模板文件不符、reference.png 缺失或超 2MB；手动改过 figure.md 后运行
 - `scripts/build_index.py --check`：只比对索引与记录是否一致（不一致退出码 1），不写文件；模式 B 检索前的快速新鲜度判定

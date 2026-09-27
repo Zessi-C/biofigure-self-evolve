@@ -14,6 +14,8 @@
     figure_manifest.py FIGDIR                     # 只报告（不改盘）
     figure_manifest.py FIGDIR --write             # 写/更新 <FIGDIR>/figure_manifest.csv
     figure_manifest.py FIGDIR --check             # 与已有清单比对，有漂移 → 退出码 1
+    figure_manifest.py FIGDIR --diff OLD.csv      # 增量重导：哪些新增/消失/内容变了/内容没变
+    figure_manifest.py FIGDIR --diff OLD.csv --only unchanged   # 可跳过重导的文件（hash 未变）
     figure_manifest.py FIGDIR --check --fail-on-unregistered   # 未登记文件也算漂移
     figure_manifest.py FIGDIR --json
 """
@@ -31,7 +33,7 @@ import sys
 
 EXTS = (".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".svg", ".eps")
 FACT_COLS = ["file", "ext", "bytes", "modified", "pages", "width_px", "height_px", "sha256_8"]
-SEM_COLS = ["figure_set", "entry_reused", "note"]
+SEM_COLS = ["figure_set", "entry_reused", "source_table", "note"]
 COLUMNS = FACT_COLS + SEM_COLS
 DEFAULT_CSV = "figure_manifest.csv"
 
@@ -170,6 +172,36 @@ def write_csv(path: str, rows: list) -> None:
             w.writerow({c: r.get(c, "") for c in COLUMNS})
 
 
+def diff_manifests(rows: list, old: dict) -> dict:
+    """当前扫描结果 vs 旧清单：按 sha256_8 判定内容有没有变（mtime 变了但 hash 没变 = 白重导）。"""
+    cur = {r["file"]: r for r in rows}
+    added = sorted(set(cur) - set(old))
+    removed = sorted(set(old) - set(cur))
+    changed, unchanged = [], []
+    for f in sorted(set(cur) & set(old)):
+        same = cur[f]["sha256_8"] and cur[f]["sha256_8"] == (old[f].get("sha256_8") or "")
+        (unchanged if same else changed).append(f)
+    return {"added": added, "removed": removed, "changed": changed, "unchanged": unchanged}
+
+
+def report_diff(d: dict, only: str) -> None:
+    kinds = [(k, v) for k, v in (("added", d["added"]), ("removed", d["removed"]),
+                                 ("changed", d["changed"]), ("unchanged", d["unchanged"]))
+             if v and (not only or k == only)]
+    if not kinds:
+        print("与旧清单比较：无变化。" if not only else f"与旧清单比较：没有 {only} 的文件。")
+        return
+    labels = {"added": "新增（旧清单没有）", "removed": "消失（文件已不在）",
+              "changed": "内容变化（需要重导）", "unchanged": "内容未变（可跳过重导）"}
+    for kind, items in kinds:
+        print(f"\n{labels[kind]}：{len(items)} 个")
+        for f in items[:20]:
+            print(f"  - {f}")
+        if len(items) > 20:
+            print(f"  …另有 {len(items) - 20} 个")
+
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -180,6 +212,10 @@ def main() -> int:
     parser.add_argument("--fail-on-unregistered", action="store_true",
                         help="--check 时把「目录里有、清单没登记」也算漂移")
     parser.add_argument("--flat", action="store_true", help="只看顶层，不递归子目录")
+    parser.add_argument("--diff", metavar="OLD.csv",
+                        help="与旧清单比较，报增量重导需要的信息（新增/消失/内容变化/内容未变）")
+    parser.add_argument("--only", choices=["added", "removed", "changed", "unchanged"],
+                        help="配合 --diff，只输出某一类")
     parser.add_argument("--json", action="store_true", help="输出 JSON")
     args = parser.parse_args()
 
@@ -191,6 +227,16 @@ def main() -> int:
 
     rows = scan(figdir, recursive=not args.flat)
     old = load_csv(csv_path)
+    if args.diff:
+        old_diff = load_csv(os.path.abspath(os.path.expanduser(args.diff)))
+        d = diff_manifests(rows, old_diff)
+        if args.json:
+            print(json.dumps(d, ensure_ascii=False, indent=2))
+        else:
+            print(f"图件目录: {figdir}")
+            print(f"当前 {len(rows)} 个文件；旧清单 {len(old_diff)} 行")
+            report_diff(d, args.only)
+        return 0
     rows = merge(rows, old)
     on_disk = {r["file"] for r in rows}
     registered = set(old)
@@ -236,8 +282,8 @@ def main() -> int:
 
     write_csv(csv_path, rows)
     print(f"\n已写入 {csv_path}（{len(rows)} 行）。")
-    print("语义列 figure_set / entry_reused / note 需 agent 填：entry_reused 写复用了哪条配方"
-          "（如 `013-milo-da-dualtrack-profile`），交付说明与代码注释据此对齐。")
+    print("语义列 figure_set / entry_reused / source_table / note 需 agent 填：entry_reused 写复用了哪条配方"
+          "（如 `013-milo-da-dualtrack-profile`），source_table 写这张图的数据来源表路径（图-表同源，用 pair_check.py 核验）。")
     if missing_sem:
         print(f"其中 {len(missing_sem)} 个文件还没填 entry_reused。")
     return 0
