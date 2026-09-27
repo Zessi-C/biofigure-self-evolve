@@ -24,7 +24,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import struct
+import subprocess
 import sys
 
 EXTS = (".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".svg", ".eps")
@@ -35,7 +37,21 @@ DEFAULT_CSV = "figure_manifest.csv"
 
 
 def pdf_pages(path: str):
-    """粗数 PDF 页数：数 /Type /Page（排除 /Pages）。够用，不引第三方库。"""
+    """PDF 页数：优先 pdfinfo（poppler），否则退回正则数 /Type /Page。
+
+    正则对 cairo_pdf 这类用对象流的 PDF 数不出来（页对象被压缩），所以 pdfinfo 存在时
+    优先用它；两者都拿不到就留空——宁可空着，也不要给个错的页数。
+    """
+    exe = shutil.which("pdfinfo")
+    if exe:
+        try:
+            proc = subprocess.run([exe, path], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                  timeout=10)
+            m = re.search(rb"^Pages:\s+(\d+)", proc.stdout, re.M)
+            if m:
+                return int(m.group(1))
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     try:
         with open(path, "rb") as fh:
             data = fh.read()
