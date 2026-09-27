@@ -61,8 +61,20 @@ def _parse_scalar(raw: str):
 
 
 def _unquote(s: str) -> str:
+    """去掉引号并还原转义，使受限解析器与 PyYAML 结果一致。
+
+    图库记录里会出现 `"…回答\\"效应多大…\\"；…"` 这种带转义引号的标量：PyYAML 会把它
+    还原成普通引号，受限解析器如果不还原，同一份 figure.md 在有/没有 PyYAML 的两台设备
+    上就会算出不同的值，`--check` 会报假漂移（跨设备同步时非常迷惑）。
+    """
     if len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
-        return s[1:-1]
+        quote = s[0]
+        inner = s[1:-1]
+        if quote == '"':
+            inner = inner.replace('\\"', '"')
+        else:
+            inner = inner.replace("\\'", "'")
+        return inner.replace("\\\\", "\\")
     return s
 
 
