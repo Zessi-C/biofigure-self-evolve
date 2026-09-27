@@ -151,16 +151,30 @@ def render_report(scans: list, canon: list, code_dir: str) -> str:
         L.append(f"  - `{p['name']}`：{', '.join(p['files'][:6])}"
                  + (" …" if len(p["files"]) > 6 else ""))
     L.append("")
-    L += ["## 3. 基础主题分布",
+    name_map = collections.defaultdict(list)
+    for p in canon:
+        name_map[p["name"]].append(p)
+    clashes = {n: ps for n, ps in name_map.items() if len(ps) > 1}
+    L += ["## 3. 同名不同色（同一个变量名在不同脚本里指向不同色号集合——最危险的一类）"]
+    if clashes:
+        for n, ps in sorted(clashes.items()):
+            L.append(f"- `{n}`：{len(ps)} 个版本")
+            for q in ps:
+                L.append(f"    - {len(q['colors'])} 色，用于 {', '.join(q['files'][:4])}"
+                         + (" …" if len(q["files"]) > 4 else ""))
+    else:
+        L.append("- （无）")
+    L.append("")
+    L += ["## 4. 基础主题分布",
           "- " + "、".join(f"{k} {v}" for k, v in themes.most_common()) if themes else "- （未检出）"]
     L.append("")
-    L += ["## 4. 导出规格"]
+    L += ["## 5. 导出规格"]
     L.append("- 函数: " + "、".join(f"{k} {v}" for k, v in exports.most_common()))
     for k in ("width", "height", "dpi", "res", "quality"):
         if sizes[k]:
             top = "、".join(f"{v}×{c}" for v, c in sizes[k].most_common(5))
             L.append(f"- {k}: {top}")
-    L += ["", "## 5. 建议",
+    L += ["", "## 6. 建议",
           "1. `--emit 00.figure_theme.R` 生成共享 theme 文件：把上面的色板去重成命名色板 + 统一主题 + 统一导出函数",
           "2. 新脚本 `source()` 它；旧脚本逐步迁移（迁移一个跑一个，别一次全改）",
           "3. 把跨图约定按 `references/preference-profile.md` 写进 `PREFERENCES.md`（标适用范围），并把 theme 文件路径写进条目「复用要点」",
@@ -180,13 +194,18 @@ def emit_theme(canon: list, code_dir: str, out_path: str) -> str:
          "",
          "## 色板（去重后；名字取原脚本里最常见的那个）",
          "biofigure_palettes <- list("]
+    used = collections.Counter()
     for i, p in enumerate(canon):
-        name = re.sub(r"[^A-Za-z0-9_.]", "_", p["name"])
+        base = re.sub(r"[^A-Za-z0-9_.]", "_", p["name"])
+        used[base] += 1
+        name = base if used[base] == 1 else f"{base}_v{used[base]}"
         entries = []
         for c in p["colors"]:
             label = p["named"].get(c, "")
             entries.append(f'{label} = "{c}"' if label else f'"{c}"')
         sep = "," if i < len(canon) - 1 else ""
+        src = ", ".join(p["files"][:3]) + (" …" if len(p["files"]) > 3 else "")
+        L.append(f"  # 来自: {src}")
         L.append(f"  {name} = c({', '.join(entries)}){sep}")
     L += ["  )", "",
           "# 取色板：biofigure_pal(\"group_4group\")；缺名时报错而不是静默给错色",
