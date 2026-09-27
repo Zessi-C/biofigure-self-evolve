@@ -36,12 +36,30 @@ def read(path: str) -> str:
         return ""
 
 
+GENERATED_MARK = "由 biofigure style_tokens.py 生成"
+
+
+def is_generated(path: str) -> bool:
+    """本脚本生成的 theme 文件不能再被当成源脚本扫描——否则会自反馈：
+    生成的文件里带着 `L4_PALETTE`/`L4_PALETTE_v2`，下一轮扫描就把它们当既有定义。"""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            return GENERATED_MARK in fh.read(400)
+    except OSError:
+        return False
+
+
 def collect_files(code_dir: str, globs: list) -> list:
     out = []
     for root, _dirs, files in os.walk(code_dir):
         for fn in sorted(files):
+            if fn.startswith(".") or fn.endswith((".bak", "~")):
+                continue
             if any(re.fullmatch(g.replace("*", ".*"), fn) for g in globs):
-                out.append(os.path.join(root, fn))
+                path = os.path.join(root, fn)
+                if is_generated(path):
+                    continue
+                out.append(path)
     return sorted(out)
 
 
