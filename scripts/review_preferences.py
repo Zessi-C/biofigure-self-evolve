@@ -25,10 +25,13 @@ from build_index import resolve_library
 PREF_FILE = "PREFERENCES.md"
 SECTIONS = {"稳定偏好": "stable", "单次观察": "single", "整理记录": "reviews"}
 NEGATION = re.compile(r"(不|不要|无需|禁止|不再|避免|别用|不应)")
+# "用户显式声明为通用"与"≥2 次一致"是两条并列的晋升通道：显式声明不需要重复次数，
+# 否则用户明确锁定的规则会被机械规则反复判为"该降级"。
+DECLARATION = re.compile(r"(显式声明|明确锁定|明确声明|明确要求为通用|通用规则|通用要求)")
 
-# 节律阈值：任一命中即认为"该整理了"
-CAP_STABLE_SOFT, CAP_STABLE_HARD = 12, 15
-CAP_SINGLE_SOFT, CAP_SINGLE_HARD = 15, 20
+# 节律阈值：任一命中即认为"该整理了"（软阈值贴着硬上限放，避免刚整理完就又被判到期）
+CAP_STABLE_SOFT, CAP_STABLE_HARD = 13, 15
+CAP_SINGLE_SOFT, CAP_SINGLE_HARD = 18, 20
 EVOLUTIONS_SINCE_REVIEW = 8
 DUP_SIM = 0.55        # 偏好行之间判定"近似"的相似度
 CROSS_SIM = 0.55      # 条目内规则之间判定"同一条规则"的相似度
@@ -98,20 +101,24 @@ def _parse_entry(raw: str, section: str, lineno: int) -> dict:
     dates = re.findall(r"\d{4}-\d{2}-\d{2}", marker)
     counts = re.findall(r"(\d+)\s*次", marker)
     count = int(counts[-1]) if counts else None
+    declared = bool(DECLARATION.search(marker))
     issues = []
     if not marker:
         issues.append("缺 〔日期 场景，次数〕 标注")
     elif not dates:
         issues.append("标注里没有日期")
-    if section == "stable":
+    if section == "stable" and not declared:
         if count is None:
-            issues.append("稳定偏好没有次数（≥2 次才够格）")
+            issues.append("稳定偏好没有次数（≥2 次或用户显式声明才够格）")
         elif count < 2:
             issues.append(f"稳定偏好但只出现 {count} 次 → 应降回单次观察")
-    if section == "single" and count is not None and count >= 2:
+    if section == "single" and declared:
+        issues.append("用户已显式声明为通用规则 → 应晋升稳定偏好（不依赖重复次数）")
+    elif section == "single" and count is not None and count >= 2:
         issues.append(f"单次观察已累计 {count} 次 → 应晋升稳定偏好")
     return {"section": section, "raw": raw.strip(), "body": body, "marker": marker,
-            "dates": dates, "count": count, "lineno": lineno, "issues": issues}
+            "dates": dates, "count": count, "declared": declared,
+            "lineno": lineno, "issues": issues}
 
 
 def parse_preferences(path: str) -> dict:
@@ -246,9 +253,9 @@ def analyze(root: str, due_days: int, stale_days: int) -> dict:
     elif ng >= CAP_SINGLE_SOFT:
         rep["due_reasons"].append(f"单次观察 {ng} 条接近上限（{CAP_SINGLE_SOFT}/{CAP_SINGLE_HARD}）")
 
-    # 2) 格式与升降级
+    # 2) 格式与升降级（"显式声明待晋升"的单次观察交给第 4 步，避免重复报同一行）
     for e in parsed["stable"] + parsed["single"]:
-        if e["issues"]:
+        if e["issues"] and not (e["section"] == "single" and e["declared"]):
             rep["must_do"].append(f"[格式/升降级] 第 {e['lineno']} 行：{'; '.join(e['issues'])} — {e['body'][:60]}")
 
     # 3) 偏好行重复/近似 → 合并候选
@@ -261,8 +268,15 @@ def analyze(root: str, due_days: int, stale_days: int) -> dict:
                                    "text": f"[合并] {len(c)} 行近似（{desc}）：合并为一条，次数与日期累加 ｜ "
                                            + " ｜ ".join(x["body"][:60] for x in c)})
 
-    # 4) 单次观察晋升：组内累计次数 ≥2
-    for c in cluster(parsed["single"], lambda x: x["body"], DUP_SIM):
+    # 4) 单次观察晋升：用户显式声明为通用，或组内累计次数 ≥2
+    for e in parsed["single"]:
+        if e["declared"]:
+            rep["must_do"].append({"kind": "promote", "lines": [e["lineno"]], "total": e["count"] or 1,
+                                   "text": f"[晋升] 第 {e['lineno']} 行：用户已显式声明为通用规则 → 晋升稳定偏好："
+                                           + e["body"][:80]})
+    declared_lines = {e["lineno"] for e in parsed["single"] if e["declared"]}
+    for c in cluster([e for e in parsed["single"] if e["lineno"] not in declared_lines],
+                     lambda x: x["body"], DUP_SIM):
         total = sum(x["count"] or 1 for x in c)
         if len(c) >= 2 or total >= 2:
             rep["must_do"].append({"kind": "promote", "lines": [x["lineno"] for x in c],
@@ -339,7 +353,9 @@ def analyze(root: str, due_days: int, stale_days: int) -> dict:
     else:
         rep["due_reasons"].append("整理记录为空——建议现在做第一次整理")
 
-    rep["due"] = bool(rep["due_reasons"]) or bool(rep["must_do"]) or bool(rep["cross_entry"])
+    # 跨条目复现只是"考虑晋升"的提示，不参与到期判定：一条只服务同一图族的规则
+    # 长期留在条目里是正确状态，不该让 --check 每次都说"该整理了"。
+    rep["due"] = bool(rep["due_reasons"]) or bool(rep["must_do"])
     return rep
 
 
