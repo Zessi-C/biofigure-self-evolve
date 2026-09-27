@@ -18,6 +18,17 @@ description: 画任何生信图之前先读本技能：写第一行绘图代码�
 2. **交付时自证**：交付说明里必须有一句「复用了 `NNN-slug` 的 XX（按你的数据改了 YY）」或「图库未命中，按普通流程设计」。没写这句，就等于没检索——这是本技能唯一的验收点。
 3. **委派不丢技能**：把画图/改图/复刻/学图交给子代理（omp 的 task、dsh 的 subagent 等）时，委派提示必须二选一：① 给出技能入口（omp 写 `skill://biofigure-self-evolve`，其他 harness 写技能目录绝对路径），要求子代理先读再动手；② 直接把 `retrieve.py --json --no-preferences "<需求>"` 的候选结果（必要时再附上要遵守的偏好）粘进提示。父代理收工前检查子代理的交付说明里有没有第 2 条的句子——最常见的失手就是父代理查了库、子代理没查。
 
+**安装时就把钩子装上**（这一步和克隆仓库同等重要，别留给"以后再说"）：
+
+```bash
+python3 <技能目录>/scripts/install_hook.py            # 自动装到检测到的 harness 全局指令层
+python3 <技能目录>/scripts/install_hook.py --check     # 验证（全部就绪 → 退出码 0）
+python3 <技能目录>/scripts/install_hook.py --project /path/to/项目   # omp 等按项目读 AGENTS.md 的 harness
+```
+
+钩子只有 5 行，写在每一轮都会读的指令文件里，用成对 HTML 注释包住（重复运行只替换该块，`--uninstall` 可撤销）。描述负责"把技能列出来"，钩子负责"每一轮都被看到"，两者互补——只靠描述就会重现"agent 老是不查图库"。
+**若用户抱怨"你又不查图库"，而你这次确实是被人提醒才想起**：先跑 `install_hook.py --check`，没装就装上，再继续干活。手工文案与其他 harness 的位置见 `references/trigger-hook.md`。
+
 技能只有两个模式，按用户意图选择：
 
 - **模式 A 学习**（ingest）：用户发来了含 figure 的材料 → 解剖、沉淀入库。
@@ -73,6 +84,8 @@ description: 画任何生信图之前先读本技能：写第一行绘图代码�
 │   ├── README.md
 │   ├── INDEX.json          # 机器可读索引，由 build_index.py 从各 figure.md 投影生成（检索走 scripts/retrieve.py）
 │   ├── INDEX.md            # 人类可读索引，由脚本生成
+│   ├── USAGE.jsonl         # 复用台账：每次 retrieve.py 追加一行（个人数据，不入公开仓库）
+│   ├── SUMMARY.md          # 最近一次定量总结报告（summary.py --write 生成）
 │   └── figures/
 │       └── 001-volcano-pathway-labels/
 │           ├── figure.md       # 学习记录：元数据 + 视觉解剖 + 配方（库的核心）
@@ -203,6 +216,7 @@ python3 <技能目录>/scripts/retrieve.py "用户要画什么，一两句"
 - **未命中**：脚本会明说。此时才按普通流程从头设计，交付满意后再提议入库（B4）
 - **要浏览全库**：`retrieve.py --all`（按 chart_types 分组）；**要把结果交给子代理**：`--json`
 - 可用 `--chart volcano --lang R` 先按受控词/语言过滤，再语义排序
+- 每次检索会自动追加一行到 `library/USAGE.jsonl`（复用台账，`--no-log` 可关）——`summary.py` 靠它算命中率与待学候选，也是唯一能证明"agent 真的在查图库"的证据
 
 脚本直接扫各 `figure.md`，永远比索引新，因此不必先建索引。若确实要手工读 `INDEX.json`，先跑 `python3 <技能目录>/scripts/build_index.py --check` 确认索引与记录一致，不一致就先重建。检索用的语义匹配综合 `chart_types` + `data_shape` + `use_when`/`not_when` + `aliases`，判断哪条记录符合用户当前的数据和意图。
 
@@ -239,7 +253,29 @@ python3 <技能目录>/scripts/retrieve.py "用户要画什么，一两句"
 - **写回偏好**（跨图习惯，"图库越长越像你"的另一机制）：凡观察到合法偏好信号——用户明确的适配选择（"阈值用 1.5"）、对成图的反馈（"图例放上面"）、主动声明的习惯（"以后都要 PDF"）——按 `references/preference-profile.md` 追加进 `library/PREFERENCES.md`（先记单次观察，≥2 次一致晋升稳定偏好）。只记可观察信号，禁止脑补；没有信号就不写
 - **未命中**：按普通流程从头设计这张图（不要硬套相近条目），正常交付。交付后若用户表示满意，主动提议：「要不要把这次的画法入库？」→ 走模式 A 沉淀（source.type=manual，ref 记本次任务描述；manual 条目的 reference.png 存**交付的成图**，没有原文献图）。这是图库进化的主要入口之一
 
-## 偏好整理：整体偏好 ↔ 部分偏好（定期）
+## 定期总结与整理（交付收尾自检）
+
+每次模式 A/B 交付收尾，跑这两条（都只读、都很快，几毫秒）：
+
+```bash
+python3 <技能目录>/scripts/review_preferences.py --check   # 偏好要不要整理
+python3 <技能目录>/scripts/summary.py --check              # 定量总结到期没有
+```
+
+退出码 1 = 该做那件事，**在本回合内做完，不要留给下次**。用户也可能直接说"整理一下偏好/图库偏好太乱了""最近学了什么"——同样按本节走。
+
+- **该整理偏好** → 按「整理五步」合并/晋升/降级/下沉，在 `## 整理记录` 留一行
+- **该出总结** → `summary.py --write` 落盘报告，并把 3~5 条要点讲给用户（命中率、待学候选、增长、告警）
+
+### 定量总结：数字说话
+
+`summary.py` 汇总四件事：**图库规模**（条目/类型分布/来源/体积）、**增长**（按 `source.learned_date` 的月度新增）、**复用台账**（检索次数、命中率、命中热度、**未命中需求 → 待学候选**）、**偏好计数与结构告警**。
+
+台账来自 `library/USAGE.jsonl`：`retrieve.py` 每次检索自动追加一行（`--no-log` 可关）。**"agent 到底有没有在查图库"只能靠台账回答，不要靠感觉**——如果台账长期为空而你明明画过图，说明触发环节出了问题，去跑 `install_hook.py`。
+
+到期条件：距上次总结 >30 天，或自上次总结新增 ≥20 条检索记录。报告落 `library/SUMMARY.md`，状态记 `library/SUMMARY.json`（都是个人数据，不入公开仓库）。**未命中需求反复出现时**，那是该学的新图型 → 问用户要不要现在学（模式 A）。
+
+### 整理：整体偏好 ↔ 部分偏好
 
 偏好会从两个方向长出来，不整理就会膨胀、互相矛盾、越用越不像你：
 
@@ -248,13 +284,7 @@ python3 <技能目录>/scripts/retrieve.py "用户要画什么，一两句"
 
 两者的关系不是固定的：一条规则若在多个条目里反复出现，就该晋升为整体偏好；一条整体偏好若只服务某一图型，就该下沉到对应条目。**判断标准是适用范围，不是写在哪里。**
 
-**什么时候整理**：每次模式 A/B 交付收尾时顺手跑一次
-
-```bash
-python3 <技能目录>/scripts/review_preferences.py --check
-```
-
-退出码 1 = 该整理了，**在本回合内做完，不要留给下次**。到期条件由脚本判定：距上次整理 >30 天、稳定偏好 ≥13 行、单次观察 ≥18 条、自上次整理新增 ≥8 条演化记录，或出现容量/格式/升降级问题。用户也可能直接说"整理一下偏好/图库偏好太乱了"——同样按本节走。
+到期条件由脚本判定：距上次整理 >30 天、稳定偏好 ≥13 行、单次观察 ≥18 条、自上次整理新增 ≥8 条演化记录，或出现容量/格式/升降级问题（跨条目复现只是"考虑晋升"的提示，不判到期）。
 
 **整理五步**（脚本给机械可判定的部分，语义判断归你；完整规范见 `references/preference-profile.md`）：
 
@@ -268,7 +298,7 @@ python3 <技能目录>/scripts/review_preferences.py --check
 
 - 在 `PREFERENCES.md` 的 `## 整理记录` 追加一行：`- YYYY-MM-DD 整理：晋升 N、合并 N、降级 N、清退 N、下沉 N`
 - 动过任何 `figure.md` 就跑 `scripts/build_index.py` 重建索引
-- 若 harness 的原生记忆或托管技能里另存了一份同类偏好（例如 omp 的 `managed-skills/*` 里有绘图约定副本），用 `review_preferences.py --digest` 刷新那份副本——同一份偏好存两处，早晚会漂移（改了一处、忘了另一处）
+- 若 harness 的原生记忆或托管技能里另存了一份同类偏好（例如 omp 的 `managed-skills/*` 里有绘图约定副本），用 `review_preferences.py --digest` 刷新那份副本，**或者直接删掉副本、只留 `PREFERENCES.md` 作单一事实源**（更推荐）——同一份偏好存两处，早晚会漂移（改了一处、忘了另一处）
 
 整理只动 `PREFERENCES.md` 与条目文件，**不改「视觉解剖」**（那是原图的客观事实）。
 
@@ -302,6 +332,8 @@ python3 <技能目录>/scripts/import_figure.py bundle.zip          # 校验完�
 
 - `scripts/init_library.py [--path DIR]`：初始化图库骨架（幂等）；用 `--path` 指定非默认位置时自动写入 `~/.config/biofigure-self-evolve/config.json`
 - `scripts/retrieve.py "<需求>"`：模式 B 的检索入口——直接扫 figure.md，输出 top-K 候选 + 偏好摘要；`--all` 浏览、`--json` 给子代理、`--chart/--lang` 预过滤、`--preferences-only` 只要偏好
+- `scripts/install_hook.py`：把常驻触发钩子写进 agent 指令层（幂等，成对注释块，`--check/--uninstall/--dry-run`，`--project DIR` 装项目级 AGENTS.md）；技能装完就跑它
+- `scripts/summary.py`：定量总结——图库规模与月度增长、复用台账（命中率/热度/未命中需求）、偏好计数、结构告警；`--check` 判到期（退出码 1）、`--write` 落盘 SUMMARY.md、`--json` 给 agent。只读（`--write` 除外）
 - `scripts/review_preferences.py`：偏好整理审计——容量/格式/重复/晋升降级/跨条目复现/过期未复现/条目内堆积；`--check` 判到期（退出码 1）、`--digest` 出可粘贴进 harness 记忆的摘要、`--json` 给 agent 逐项执行。只读不写
 - `scripts/build_index.py [--library DIR]`：扫描所有 `figures/*/figure.md`，重建 INDEX.json + INDEX.md（无 PyYAML 也能跑），并告警缺字段、id 与目录名不一致、related 悬空、languages 与模板文件不符、reference.png 缺失或超 2MB；手动改过 figure.md 后运行
 - `scripts/build_index.py --check`：只比对索引与记录是否一致（不一致退出码 1），不写文件；模式 B 检索前的快速新鲜度判定
@@ -320,4 +352,4 @@ python3 <技能目录>/scripts/import_figure.py bundle.zip          # 校验完�
 | `references/ingest-sources.md` | 模式 A 第一步取图前（必读） |
 | `references/chart-taxonomy.md` | 模式 A 打标签、模式 B 检索匹配时 |
 | `references/preference-profile.md` | 模式 B 读写 `PREFERENCES.md` 前、做偏好整理时（必读） |
-| `references/trigger-hook.md` | 用户抱怨"agent 老是不查图库"时：把触发钩子装进项目级/全局 agent 指令 |
+| `references/trigger-hook.md` | 安装技能时、或用户抱怨"agent 老是不查图库"时：钩子原理、手工文案、各 harness 位置（脚本见 `scripts/install_hook.py`） |

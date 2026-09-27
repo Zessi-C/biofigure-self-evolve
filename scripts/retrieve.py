@@ -16,12 +16,15 @@ B1 检索，不需要再单独读两个大文件。
 退出码: 0 正常（含"未命中"）；1 图库不可用或参数错误。
 """
 import argparse
+import datetime
 import json
 import os
 import re
 import sys
 
 from build_index import _as_list, collect_records, resolve_library
+
+USAGE_FILE = "USAGE.jsonl"
 
 # 字段权重：aliases/chart_types 是用户口语与受控词的对齐点，权重最高；
 # not_when 取负值——命中"不适用"说明这条不是用户要的，但只做温和惩罚，避免误杀。
@@ -116,6 +119,28 @@ def fmt_candidate(idx: int, s: float, hits: list, warns: list, rec: dict, root: 
     return "\n".join(lines)
 
 
+def log_usage(root: str, query: str, top: list, n_records: int) -> None:
+    """把这次检索追加进 library/USAGE.jsonl —— 定期总结的定量基础。
+
+    "agent 到底有没有查图库""哪些需求一直没命中"这类问题只能靠台账回答；写失败
+    （只读库、磁盘满）绝不影响检索本身，因此吞掉 OSError。
+    """
+    try:
+        rec = {
+            "ts": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+            "query": query,
+            "hit": bool(top),
+            "top": top[0][3]["id"] if top else None,
+            "score": round(top[0][0], 2) if top else 0.0,
+            "candidates": [t[3]["id"] for t in top],
+            "n_records": n_records,
+        }
+        with open(os.path.join(root, USAGE_FILE), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -131,6 +156,8 @@ def main() -> int:
     parser.add_argument("--no-preferences", action="store_true",
                         help="不附偏好摘要（只想要候选时用，输出更短，适合塞进子代理的委派提示）")
     parser.add_argument("--json", action="store_true", help="输出 JSON（便于传给子代理）")
+    parser.add_argument("--no-log", action="store_true",
+                        help="不把本次检索写进 library/USAGE.jsonl（默认写，作为定期总结的定量台账）")
     args = parser.parse_args()
 
     root = resolve_library(args.library)
@@ -152,18 +179,24 @@ def main() -> int:
         return 0
 
     query = " ".join(args.query).strip()
+    browse = args.all or not query
+    top, total = ([], 0)
+    if not browse:
+        top, total = rank(query, records, args.top, args.min_score)
+        if not args.no_log:
+            log_usage(root, query, top, len(records))
+
     if args.json:
         payload = {"library": root, "query": query, "count": len(records),
                    "index_warnings": warnings}
         if not args.no_preferences:
             payload["preferences"] = prefs
-        if args.all or not query:
+        if browse:
             payload["figures"] = [
                 {"id": r["id"], "title": r["title"], "chart_types": r["chart_types"],
                  "data_shape": r["data_shape"], "use_when": r["use_when"],
                  "verified": r["verified"], "dir": r["dir"]} for r in records]
         else:
-            top, total = rank(query, records, args.top, args.min_score)
             payload["candidates"] = [
                 {"score": round(s, 2), "hit": sorted(set(h)), "not_when_hit": sorted(set(w)),
                  **{k: r[k] for k in ("id", "title", "chart_types", "data_shape",
@@ -177,7 +210,7 @@ def main() -> int:
     if warnings:
         print(f"⚠ 图库告警 {len(warnings)} 条（先跑 scripts/build_index.py 看详情）")
 
-    if args.all or not query:
+    if browse:
         print("\n# 图库条目（按 chart_types 分组）\n")
         groups = {}
         for r in records:
@@ -189,7 +222,6 @@ def main() -> int:
                 print(f"- {r['id']} — {r['title']} | {r['data_shape']} | {r['verified']}")
             print()
     else:
-        top, total = rank(query, records, args.top, args.min_score)
         print(f"\n# 检索: {query}\n")
         if not top:
             print("未命中：库里没有足够相近的条目 → 按普通流程从头设计，交付满意后再提议入库（模式 A）。")

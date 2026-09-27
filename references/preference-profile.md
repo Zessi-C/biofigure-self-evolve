@@ -72,6 +72,7 @@ python3 <技能目录>/scripts/review_preferences.py --check    # 退出码 1 = 
 - 脚本**只读不写**：语义合并必须由 agent 判断并落笔，避免机械改坏个人数据
 - 整理完在 `## 整理记录` 追加一行：`- YYYY-MM-DD 整理：晋升 N、合并 N、降级 N、清退 N、下沉 N`；脚本靠它判断下次到期时间
 - 动过任何 `figure.md` 后跑 `scripts/build_index.py` 重建索引
+- 定量侧（条目数、命中率、未命中需求）交给 `scripts/summary.py`；偏好整理只关心偏好本身，两者在交付收尾时一起 `--check`
 
 ### 条目侧的整理
 

@@ -16,3 +16,8 @@ library/INDEX.md
 
 # 用户偏好档案是个人数据
 library/PREFERENCES.md
+
+# 复用台账与定期总结是个人使用数据
+library/USAGE.jsonl
+library/SUMMARY.md
+library/SUMMARY.json
