@@ -27,7 +27,9 @@ import re
 import sys
 
 HEX = re.compile(r"#[0-9A-Fa-f]{6}\b")
-NAMED_COLOR = re.compile(r"([A-Za-z_][\w.]*|'[^']+'|\"[^\"]+\")\s*=\s*(#[0-9A-Fa-f]{6})")
+# R 里色值普遍带引号：Normal = "#8B9DAF"。不认引号就会把色板的名字全丢掉，
+# 迁移后 names(pal) 变 NULL，脚本里的 setdiff(levels, names(pal)) 直接报错。
+NAMED_COLOR = re.compile(r"""([A-Za-z_][\w.]*|'[^']+'|"[^"]+")\s*=\s*["']?(#[0-9A-Fa-f]{6})["']?""")
 BASE_THEME = re.compile(r"\btheme_(classic|bw|void|minimal|light|dark|linedraw|gray)\s*\(")
 EXPORT = re.compile(r"\b(ggsave|cairo_pdf|pdf|jpeg|png|tiff|svglite)\s*\(([^)]{0,300})")
 NUM = re.compile(r"\b(width|height|dpi|res|quality|units|base_size|pointsize)\s*=\s*([0-9.]+|\"[a-z]+\")")
@@ -299,7 +301,9 @@ def palettes_from_theme(theme_path: str) -> list:
                 continue
             colors = HEX.findall(m.group(2))
             if len(colors) >= 2:
-                out.append({"name": m.group(1), "colors": colors, "files": [], "anonymous": False})
+                named = {k.strip("'\""): v for k, v in NAMED_COLOR.findall(m.group(2))}
+                out.append({"name": m.group(1), "colors": colors, "named": named,
+                            "files": [], "anonymous": False})
     return out
 
 
@@ -319,6 +323,14 @@ def plan_migration(path: str, canon: list, theme_rel: str) -> tuple:
         if not name or len(colors) < 2:
             continue
         hit = by_colors.get(tuple(colors))
+        if hit and hit.get("named"):
+            src_named = {k.strip("'\""): v for k, v in NAMED_COLOR.findall(body)}
+            # 色号一样但语义名不同（Normal/ModSev vs Ctrl/Treat）绝不能自动换：
+            # 脚本会拿 names(pal) 做校验或取子集，换了名字行为就变了。
+            if src_named and src_named != hit["named"]:
+                conflicts.append((name, len(colors),
+                                  [f"名字不同: 本地 {sorted(src_named.values()) and sorted(src_named)} vs theme {sorted(hit['named'])}"]))
+                continue
         if not hit:
             # 色号集合与 theme 不匹配：可能是同名不同色，必须人工判断
             same_name = [p for p in canon if p["name"] == name]
