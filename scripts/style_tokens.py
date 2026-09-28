@@ -398,7 +398,9 @@ def plan_migration(path: str, canon: list, theme_rel: str) -> tuple:
 
     if changes and f'"{theme_rel}"' not in text and f"'{theme_rel}'" not in text:
         lines = text.split("\n")
-        idx = 0
+        # 插入位置：shebang 之后 → 最后一个 library() 之后 → 文件开头。
+        # 少了 shebang 判断会把 `#!/usr/bin/env Rscript` 顶到第 8 行（实测两个脚本中招）。
+        idx = 1 if lines and lines[0].startswith("#!") else 0
         for i, line in enumerate(lines[:60]):
             if re.match(r"\s*library\s*\(", line):
                 idx = i + 1
