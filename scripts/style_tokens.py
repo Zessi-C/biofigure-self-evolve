@@ -120,7 +120,8 @@ def _balanced_body(text: str, open_idx: int, mask: list = None):
     return ""
 
 
-PALETTE_START = re.compile(r"(?:values\s*=\s*|([A-Za-z_][\w.]*)\s*(?:<-|=)\s*)c\(")
+# 捕获组：anon=匿名的 values = c(...)；name+op=具名定义（<- 或 =，两者语义不同必须保留）
+PALETTE_START = re.compile(r"(?:(?P<anon>values\s*=\s*)|(?P<name>[A-Za-z_][\w.]*)\s*(?P<op><-|=)\s*)c\(")
 
 
 def extract_palettes(text: str, rel: str) -> list:
@@ -133,7 +134,8 @@ def extract_palettes(text: str, rel: str) -> list:
     for m in PALETTE_START.finditer(text):
         if not mask[m.start()]:
             continue  # 注释里的旧定义，不算
-        name = m.group(1)
+        name = m.group("name")
+        op = m.group("op") or "="
         body = _balanced_body(text, m.end() - 1, mask)
         colors = HEX.findall(body)
         if len(colors) < 2:
@@ -363,7 +365,8 @@ def plan_migration(path: str, canon: list, theme_rel: str) -> tuple:
     for m in list(PALETTE_START.finditer(text)):
         if not mask[m.start()]:
             continue  # 注释掉的旧定义不要动
-        name = m.group(1)
+        name = m.group("name")
+        op = m.group("op") or "="
         body = _balanced_body(text, m.end() - 1, mask)
         colors = HEX.findall(body)
         if not name or len(colors) < 2:
@@ -382,12 +385,12 @@ def plan_migration(path: str, canon: list, theme_rel: str) -> tuple:
             continue
         start = m.start()
         end = m.end() + len(body) + 1
-        indent = text[:start].split("\n")[-1]
-        new = f'{name} <- biofigure_pal("{hit["name"]}")'
+        # 单表达式替换：既保留原运算符（`=` 在 list(...) 里是具名参数，换成 <- 会改语义），
+        # 又用 setNames 内联标签（不用额外语句，因此两种上下文都成立）。
+        expr = f'biofigure_pal("{hit["name"]}")'
         if labels:
-            # 原脚本的标签必须原样还原：脚本会拿 names(pal) 校验分组、取子集
-            new += ("\n" + indent + f'names({name}) <- c('
-                    + ", ".join(json.dumps(l) for l in labels) + ")")
+            expr = f'setNames({expr}, c({", ".join(json.dumps(l) for l in labels)}))'
+        new = f'{name} {op} {expr}'
         edits.append((start, end, new))
         changes.append((name, hit["name"], len(colors)))
     for start, end, new in sorted(edits, key=lambda e: -e[0]):
