@@ -9,10 +9,9 @@ not_when: 组数多且只关心中位数排序（改条形图）；数据成对�
 layout: 纵向箱线（无缺省外点）+ 半透明抖动散点 + 顶部显著性括线与星号，无背景网格，y 从 0 或数据下界起
 languages: [R, Python]
 packages: [ggplot2, matplotlib, pandas, numpy]
-verified: both
 source:
   type: manual
-  title: "格式演示条目：本条目为发布示例而作，可作学习新图时的照抄模板"
+  title: "格式演示条目：本条目为发布示例而作，示范配方怎么写（不含代码文件）"
   ref: original
   panel: full
   learned_date: 2026-08-29
@@ -36,10 +35,12 @@ source:
 5. 主题：去网格、保留轴线、y 上限扩 15% 给括线让位
 6. 导出：300dpi PNG + 矢量 PDF
 
-## 模板自检记录
+## 参考实现（可选）
 
-- R：通过（2026-08-29，ggplot2；括线用 annotate 手绘，无 ggsignif 依赖）
-- Python：通过（2026-08-29，matplotlib；括线用 plot+text 手绘）
+本条目随仓库发布，**只含配方 + 参考图**：配方本身要写到「照着能写出来」的程度，代码文件是可选的。
+私有库里若配了 `template.R` / `template.py`，那是**参考实现**——用来看这套画法具体怎么写、并用来验证画法可行；复用时按配方临摹改写，不要把整段代码搬进项目当成品。
+
+（示例条目历史上带过 R/Python 双参考实现，均已实跑通过；发布版删去代码文件，避免把配方库当代码模板库用。）
 
 ## 复用要点
 

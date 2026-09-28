@@ -10,7 +10,7 @@ A self-evolving library and reuse engine for bioinformatics figures. The agent s
 
 - **Trigger**: before producing, editing, replicating, or learning any bioinformatics/statistics figure, run `scripts/retrieve.py` against the library; state in the delivery which entry was reused (or that nothing matched); when delegating figure work to a subagent, pass the skill entry point or the retrieval result into the delegation prompt. When the skill description alone is not enough, install the short hook from `references/trigger-hook.md` into the project-level or global agent instructions.
 - **Learning**: send the agent a paper, PDF, article, or screenshot. It decides whether to record a single figure, a group, or a composite layout, and traces the original plotting code first (inline code > GitHub repo > paper DOI → PMC code availability); only without any code lead does it infer from the image, and the record says so.
-- **Reuse**: when you need a plot, it retrieves entries by `use_when` / `data_shape`, borrows the technical skeleton, and decides axes, thresholds, and colors against your current data. With several candidates it returns the top three, ranked by data shape match, then intent match, then verification status.
+- **Reuse**: when you need a plot, it retrieves entries by `use_when` / `data_shape`, borrows the technical skeleton, and decides axes, thresholds, and colors against your current data. Reuse means imitating the recipe, not calling or copying the entry's reference implementation. With several candidates it returns the top three, ranked by data shape match, then intent match, then verification status.
 - **Learn from your own projects**: say "follow my previous style / add this recipe to the library" and the agent reads your project's plotting scripts first (the source of truth), then the rendered figures, and records your house style (color semantics, sizes, composition, naming, layout) as an entry with `source.type=project`.
 - **Delivery**: for a family of figures, produce the list first (B0); before handing anything over, run the mandatory visual self-check (B5 + `references/delivery-checklist.md`); important figures get an independent QA pass — hand it to a subagent when the harness supports one, otherwise use `qa_prompt.py --self`; log the entry actually used (`retrieve.py --record-used`).
 - **Optional helpers** (only if the project already keeps manifests): `figure_manifest.py` for figure inventory and `--diff` incremental re-rendering, `pair_check.py` for figure-to-table provenance. Figure-side housekeeping, not the core of this skill.
@@ -37,7 +37,7 @@ python3 ~/.agents/skills/biofigure-self-evolve/scripts/install_hook.py --project
 Works with any agent that follows the agents/skills convention (a directory containing a SKILL.md with name/description frontmatter). Other harnesses work as long as they can read files, fetch pages, and run scripts; those with their own plugin format only need a thin adapter. Dependencies:
 
 - Scripts need only the Python 3 standard library (PyYAML optional; a restricted built-in parser otherwise; `figure_manifest.py` counts PDF pages more reliably when `pdfinfo` is available, otherwise falls back and leaves the count blank if unknown).
-- Template verification needs R (ggplot2) and/or Python (matplotlib); whichever side is missing stays `unverified`.
+- Entries are recipe-first; the reference implementations (`template.R` / `template.py`) are optional. Verifying them needs R (ggplot2) and/or Python (matplotlib); whichever side is missing stays `unverified` or the field is omitted.
 - No vendor API, MCP, or network service involved.
 
 ## Repository layout
@@ -50,7 +50,7 @@ library/
 └── figures/NNN-slug/
     ├── figure.md           # single source of truth: frontmatter + visual dissection + recipe + reuse notes + evolution log
     ├── reference.png       # the original figure (personal reference only)
-    ├── template.R / template.py   # self-contained dual templates, produce a figure with no arguments
+    ├── template.R / template.py   # optional reference implementations (how it is written, not an API to call)
     └── template_output_*   # template outputs, kept as known-good baselines
 references/                 # record schema, per-source ingestion, chart_types controlled vocabulary (~40 types), preference profile format, trigger hook, delivery checklist
 scripts/                    # install_hook / init_library / build_index / retrieve / review_preferences / summary / figure_manifest / pair_check / qa_prompt / style_tokens / mine_feedback / export_figure / import_figure / verify_library

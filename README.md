@@ -11,7 +11,7 @@
 - **触发**：任何生信/统计图的产出、修改、复刻、学习，动手前先跑 `scripts/retrieve.py` 检索图库；交付时说明"复用了哪条/未命中"；把画图任务委派给子代理时，把技能入口或检索结果写进委派提示。描述里写不下这么长的触发条件时，把 `references/trigger-hook.md` 的短钩子装进项目级/全局 agent 指令。
 - **学习**：把文献、PDF、文章、截图发给 agent，它判断按单图、成组还是组合版式记录，并优先追溯原始绘图代码（正文内嵌代码 > GitHub 仓库 > 论文 DOI → PMC code availability），都找不到才看图反推且如实标注；
 - **从项目历史学**：说「参考我之前的风格 / 把这套画法入库」，agent 先读项目绘图脚本（事实源）再读成图，把 house style（配色语义、尺寸字号、拼合、命名目录）学成条目（`source.type=project`）——文献条目给你新画法，项目条目给你自己的风格；
-- **复用**：画图时按 `use_when` / `data_shape` 检索相近条目，借鉴其技术骨架，轴、阈值、配色按当前数据重新决定；多候选时按数据形状 > 意图 > 验证状态排序取前三；
+- **复用**：画图时按 `use_when` / `data_shape` 检索相近条目，借鉴其技术骨架，轴、阈值、配色按当前数据重新决定；**按配方临摹改写，不是调用/拷贝条目里的参考实现**；多候选时按数据形状 > 意图 > 验证状态排序取前三；
 - **交付**：一套图先出清单（B0）再动手；交付前**强制目视自检**（B5 + `references/delivery-checklist.md`）；重要图加一道独立验收——支持子代理就交给子代理，不支持就用 `qa_prompt.py --self` 自己照做；交付后写回执（`retrieve.py --record-used`）。
 - **可选辅助**（项目已有清单习惯时才用）：`figure_manifest.py` 图件清单与 `--diff` 增量重导、`pair_check.py` 图-表同源核验——属于图件侧的组织，不是本技能核心。
 - **house style 落地**：`scripts/style_tokens.py` 体检项目绘图脚本（色板重复、同名不同色、主题/尺寸分布），`--emit` 生成**项目自己的**共享 theme 文件，让「记住的偏好」变成「跑不掉的约束」；技能本身不存具体色值，风格只按槽位描述（主色板/分组色板/发散色板/字号层级/尺寸/导出规格…）。`scripts/mine_feedback.py`（可选，取决于 harness 是否留会话日志）定期从会话历史挖用户纠偏，产出偏好候选交整理流程判断。
@@ -37,7 +37,7 @@ python3 ~/.agents/skills/biofigure-self-evolve/scripts/install_hook.py --project
 适用于任何遵循 agents/skills 约定的 agent（目录含带 name/description frontmatter 的 SKILL.md 即为技能）。其他 harness 只要能读文件、抓网页、跑脚本即可驱动，有自有插件格式的加一层薄适配。依赖：
 
 - 脚本只需 Python 3 标准库（PyYAML 可选，缺省走内置受限解析器；`figure_manifest.py` 的 PDF 页数在有 `pdfinfo` 时更准，没有则退回内置解析、拿不到就留空）；
-- 模板验证需要 R（ggplot2）和/或 Python（matplotlib），缺哪边哪边的条目标 `unverified`；
+- 条目以**配方**为核心，参考实现（`template.R` / `template.py`）可选；要验证参考实现才需要 R（ggplot2）和/或 Python（matplotlib），缺哪边哪边标 `unverified` 或省略该字段；
 - 不依赖任何厂商 API、MCP 或联网服务。
 
 ## 仓库结构
@@ -50,7 +50,7 @@ library/
 └── figures/NNN-slug/
     ├── figure.md           # 唯一事实源：frontmatter + 视觉解剖 + 配方 + 复用要点 + 演化记录
     ├── reference.png       # 原图参考（仅个人学习用）
-    ├── template.R / template.py   # 自包含双模板，无参数运行即出图
+    ├── template.R / template.py   # 可选：参考实现，无参数运行即出图（"怎么写"的示范，不是可调用接口）
     └── template_output_*   # 模板运行产物，作为已知良好输出
 references/                 # 记录 schema、各来源取图方法、chart_types 受控词表（近 40 种）、偏好档案格式、触发钩子、交付清单
 scripts/                    # install_hook / init_library / build_index / retrieve / review_preferences / summary / figure_manifest / pair_check / qa_prompt / style_tokens / mine_feedback / export_figure / import_figure / verify_library
@@ -94,7 +94,7 @@ python3 scripts/mine_feedback.py --since 2026-08-01           # 从会话历史�
 # 跨设备迁移条目（典型：本机读文献学图 → 服务器跑分析复用）
 python3 scripts/export_figure.py 003 --with-related   # 打包条目为 bundle（id/数字前缀/all 均可）
 python3 scripts/import_figure.py bundle.zip           # 校验完整性后导入，自动重建索引；冲突默认拒绝（--force 覆盖 / --rename 换编号）
-python3 scripts/verify_library.py                     # 体检：模板复制到临时目录试运行，只报告不改库
+python3 scripts/verify_library.py                     # 体检（可选）：有参考实现的条目复制到临时目录试运行，只报告不改库
 ```
 
 ## 许可

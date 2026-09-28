@@ -21,9 +21,11 @@ SKILL_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DEFAULT_LIBRARY = os.path.join(SKILL_DIR, "library")
 CONFIG_PATH = os.path.expanduser("~/.config/biofigure-self-evolve/config.json")
 
+# verified 是选填：只有配了参考实现（template.R / template.py）时才有意义；
+# 纯配方条目省略它，脚本按 unverified 处理。
 REQUIRED_FIELDS = [
     "id", "title", "aliases", "chart_types", "data_shape",
-    "use_when", "not_when", "layout", "languages", "packages", "verified",
+    "use_when", "not_when", "layout", "languages", "packages",
 ]
 SOURCE_FIELDS = ["type", "title", "ref", "panel", "learned_date"]
 
@@ -190,14 +192,12 @@ def collect_records(fig_dir: str):
         if missing_src:
             warnings.append(f"{name}: source 缺少 {', '.join(missing_src)}")
 
-        # languages 与模板文件一致性（双向）+ reference.png 检查
+        # reference.png 检查 + 参考实现与 languages 的一致性。
+        # 参考实现（template.R / template.py）是可选的：没有不算问题；
+        # 但"有文件却没在 languages 里声明"要提醒，否则按语言检索时会漏掉它。
         files = set(os.listdir(os.path.join(fig_dir, name)))
         langs = _as_list(data.get("languages"))
         has_py = "Python" in langs or "python" in langs
-        if "R" in langs and "template.R" not in files:
-            warnings.append(f"{name}: languages 含 R 但缺少 template.R")
-        if has_py and "template.py" not in files:
-            warnings.append(f"{name}: languages 含 Python 但缺少 template.py")
         if "template.R" in files and "R" not in langs:
             warnings.append(f"{name}: 存在 template.R 但 languages 未列出 R")
         if "template.py" in files and not has_py:
