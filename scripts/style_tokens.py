@@ -157,19 +157,34 @@ def canonical_palettes(scans: list) -> list:
     return out
 
 
-def preference_candidates(canon: list, themes, sizes, code_dir: str, today: str) -> list:
+CODE_DIR_NAMES = {"code", "codes", "scripts", "script", "src", "r", "analysis", "figures"}
+
+
+def project_name(code_dir: str) -> str:
+    """偏好里要标"适用范围：哪个项目"，传进来的通常是 <项目>/code，取上一级做项目名。"""
+    path = os.path.normpath(code_dir)
+    base = os.path.basename(path)
+    if base.lower() in CODE_DIR_NAMES:
+        parent = os.path.basename(os.path.dirname(path))
+        if parent:
+            return parent
+    return base
+
+
+def preference_candidates(canon: list, themes, sizes, code_dir: str, today: str,
+                          min_files: int = 2) -> list:
     """把体检结论翻译成「可写进 PREFERENCES.md 的偏好候选」。
 
     措辞里明确写「脚本内保持自包含定义」——风格一致靠偏好约束，不靠共享依赖。
     """
-    proj = os.path.basename(os.path.normpath(code_dir))
+    proj = project_name(code_dir)
     out = []
     name_map = collections.defaultdict(list)
     for p in canon:
         name_map[p["name"]].append(p)
 
     for p in canon:
-        if p["anonymous"] or len(p["files"]) < 2:
+        if p["anonymous"] or len(p["files"]) < min_files:
             continue
         colors = " / ".join(p["colors"][:8]) + (" …" if len(p["colors"]) > 8 else "")
         out.append(f"- {proj} 统一色板 `{p['name']}`（{len(p['colors'])} 色）：{colors}"
@@ -273,6 +288,8 @@ def main() -> int:
     parser.add_argument("--glob", action="append", default=[], metavar="PATTERN",
                         help="文件匹配（可重复，默认 *.R；Python 项目用 --glob '*.py'）")
     parser.add_argument("--suggest", action="store_true", help="只输出偏好候选")
+    parser.add_argument("--min-files", type=int, default=2, metavar="N",
+                        help="色板至少在 N 个脚本里重复出现才算候选（默认 2；想只看重点就调大）")
     parser.add_argument("--json", action="store_true", help="输出 JSON")
     args = parser.parse_args()
 
@@ -295,7 +312,7 @@ def main() -> int:
             for k, v in e["spec"].items():
                 sizes[k][v] += 1
     today = datetime.date.today().isoformat()
-    cands = preference_candidates(canon, themes, sizes, code_dir, today)
+    cands = preference_candidates(canon, themes, sizes, code_dir, today, args.min_files)
 
     if args.json:
         print(json.dumps({"dir": code_dir, "files": [s["file"] for s in scans],
