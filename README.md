@@ -2,25 +2,25 @@
 
 # biofigure-self-evolve
 
-**范围**：管两件事——画什么类型的图（选型 + 配方复用）、怎么把图做好看（美学与排版规范、风格统一、交付前目视验收）。统计口径、数据管道、表格/Excel 交付不在本技能范围内。
+**范围**：本技能界定于两项核心任务：图型选择（选型与配方复用）以及视觉呈现规范（美学与排版规范、风格统一、交付前目视验收）。统计口径、数据管道及表格/Excel 交付均不属于本技能范畴。
 
-一套**绘图引导** + 自进化的 figure 图库：没指定图型时引导选型，指定了图型时引导画法与美学，图库里没有匹配的图时按美学从零设计（有参考图就从参考图学美学）；全局偏好记录跨项目的绘图方式。图库每条记录都是**独立插件**——单独拿走任何一条，技能与其余条目照常工作。agent 把文献里看到的图画法存成本地图库条目，你要画图时先查库复用，条目与偏好随使用不断更新。条目组织参考 [FigureYa](https://github.com/ying-ge/FigureYa)（iMetaMed 2025），差异在于维护交给 agent 而非人工。
+本项目包含一套**绘图引导**机制与自进化的 figure 图库：未指定图型时引导选型；指定图型时指导画法与美学；图库无匹配条目时依据美学规范从零设计（若提供参考图，则自参考图提炼美学特征）。全局偏好档案用于记录跨项目通用的绘图方式。图库中每条记录均为**独立插件**：抽离任意单条记录，本技能与其余条目仍照常运行。agent 将文献中提炼的图表画法沉淀为本地图库条目；制图前须先检索图库复用，条目与偏好在实际调用中持续迭代更新。条目组织结构参考 [FigureYa](https://github.com/ying-ge/FigureYa)（iMetaMed 2025），主要差异在于图库维护交由 agent 自动执行而非依赖人工。
 
 ## 工作方式
 
-- **触发**：任何生信/统计图的产出、修改、复刻、学习，动手前先跑 `scripts/retrieve.py` 检索图库；交付时说明"复用了哪条/未命中"；把画图任务委派给子代理时，把技能入口或检索结果写进委派提示。描述里写不下这么长的触发条件时，把 `references/trigger-hook.md` 的短钩子装进项目级/全局 agent 指令。
-- **学习**：把文献、PDF、文章、截图发给 agent，它判断按单图、成组还是组合版式记录，并优先追溯原始绘图代码（正文内嵌代码 > GitHub 仓库 > 论文 DOI → PMC code availability），都找不到才看图反推且如实标注；
-- **从项目历史学**：说「参考我之前的风格 / 把这套画法入库」，agent 先读项目绘图脚本（事实源）再读成图，把 house style（配色语义、尺寸字号、拼合、命名目录）学成条目（`source.type=project`）——文献条目给你新画法，项目条目给你自己的风格；
-- **复用**：画图时按 `use_when` / `data_shape` 检索相近条目，借鉴其技术骨架，轴、阈值、配色按当前数据重新决定；**按配方临摹改写，不是调用/拷贝条目里的参考实现**；多候选时按数据形状 > 意图 > 验证状态排序取前三；
-- **交付**：一套图先出清单（B0）再动手；交付前**强制目视自检**（B5 + `references/delivery-checklist.md`）；重要图加一道独立验收——支持子代理就交给子代理，不支持就用 `qa_prompt.py --self` 自己照做；交付后写回执（`retrieve.py --record-used`）。
-- **可选辅助**（项目已有清单习惯时才用）：`figure_manifest.py` 图件清单与 `--diff` 增量重导、`pair_check.py` 图-表同源核验——属于图件侧的组织，不是本技能核心。
-- **美学与偏好**：图库里没有匹配的图、或用户只是想要"这种美感"时，从参考图学**美学**（配色逻辑、字号层级、留白、排版策略）写进 `PREFERENCES.md`，不硬造条目；跨项目的绘图方式也沉淀在这里，画图时作为默认值生效。脚本与条目模板始终保持**自包含**（单独拿出来就能跑），项目内的一致靠偏好约束，不靠共享依赖。`scripts/mine_feedback.py`（可选，取决于 harness 是否留会话日志）定期从会话历史挖用户纠偏，产出偏好候选交整理流程判断。
-- **回流**：满意的结果回收为新条目；对已有条目的意见写入其模板缺省值并记入演化记录；跨图反复出现的习惯沉淀到 `library/PREFERENCES.md`。
-- **整理**：整体偏好（`PREFERENCES.md`）与部分偏好（各条目「复用要点」「演化记录」）定期收口——晋升、合并、降级、下沉、清退，并给每次整理留一行记录；`scripts/review_preferences.py` 判到期并列出机械可判定的必做项，语义合并由 agent 判断。
-- **总结**：`scripts/summary.py` 按节律出定量报告——图库规模与月度增长、复用台账（检索次数/命中率/命中热度/**未命中需求 → 待学候选**）、偏好计数、结构告警。台账由 `retrieve.py` 每次检索自动记录，也是「agent 到底有没有在查图库」的唯一客观证据。
-- **迁移**：条目可打包成 bundle（zip，带清单与逐文件校验和）导入其他设备的图库，冲突可跳过/覆盖/换编号；新环境导入后跑 `verify_library.py` 体检。
+- **触发**：凡涉及生信与统计图的生成、修改、复刻或学习，执行操作前须运行 `scripts/retrieve.py` 检索图库；交付成果时须注明"复用了哪条/未命中"；向子代理委派绘图任务时，应将技能入口或检索结果写入委派提示。若配置描述受字段长度限制无法载入完整触发条件，可将 `references/trigger-hook.md` 中的轻量钩子写入项目级或全局 agent 指令。
+- **学习**：向 agent 提交文献、PDF、文章或截图后，由其研判并按单图、成组或组合版式建立条目，同时优先追溯原始绘图代码（优先级：正文内嵌代码 > GitHub 仓库 > 论文 DOI → PMC code availability）；仅在无法获取代码时依据图件反推画法，并如实标注来源；
+- **从项目历史学**：当接收到「参考我之前的风格 / 把这套画法入库」等指令时，agent 依次读取作为事实源的项目绘图脚本与渲染成图，将既有规范 house style（配色语义、尺寸字号、拼合版式、目录与文件命名）抽象为独立条目（`source.type=project`）：文献条目提供前沿画法，项目条目则沉淀团队既有风格；
+- **复用**：绘图时依据 `use_when` 与 `data_shape` 检索相近条目并参考其技术骨架，坐标轴、阈值与配色依据当前数据重新设定；**须按配方临摹改写，而非直接调用或拷贝条目中的参考实现**；命中多个候选时，依 数据形状 > 意图 > 验证状态 降序排序并选取前三项；
+- **交付**：成套图件须先输出清单（B0）方可开始绘制；交付前**强制目视自检**（依据 B6 与 `references/delivery-checklist.md` 进行交付自检）；关键图件须增设独立验收环节：环境支持子代理时交由子代理验收，不支持时则运行 `qa_prompt.py --self` 自主核查；交付完成后须记录回执（`retrieve.py --record-used`）。
+- **可选辅助**（仅在项目已有清单管理习惯时选用）：包含用于图件清单管理与 `--diff` 增量重导的 `figure_manifest.py`，以及用于图-表同源核验的 `pair_check.py`；此类工具属于图件层面的组织工作，并非本技能核心。
+- **美学与偏好**：当图库无匹配条目、或用户仅需要参考特定视觉风格时，可自参考图中提炼**美学**要素（配色逻辑、字号层级、留白与排版策略）并写入 `PREFERENCES.md`，避免强行创建冗余条目；跨项目通用的绘图方式亦沉淀于此，在绘图时作为默认配置生效。脚本与条目模板始终保持**自包含**（独立抽取即可直接运行）；项目内的一致性依赖偏好档案约束，而非引入共享依赖。`scripts/mine_feedback.py`（可选功能，取决于 harness 是否保留会话日志）可定期自交互历史中挖掘用户纠偏，产出偏好候选供后续整理流程研判。
+- **回流**：质量达标的成图结果可沉淀为新条目；针对已有条目的修改建议写入对应模板的缺省配置，并记入演化记录；跨图表反复出现的绘图习惯，则汇总至 `library/PREFERENCES.md`。
+- **整理**：全局偏好档案（`PREFERENCES.md`）与局部偏好（各条目中的「复用要点」与「演化记录」）须定期收敛整理：执行晋升、合并、降级、下沉及清退，且每次整理均须保留单行记录；`scripts/review_preferences.py` 用于判定维护周期是否届满并列出规则明确的待办事项，语义层面的合并操作则由 agent 负责研判。
+- **总结**：`scripts/summary.py` 周期性输出定量报告，涵盖图库规模与月度增量、复用台账（检索次数/命中率/命中热度/**未命中需求 → 待学候选**）、偏好统计与目录结构告警。台账由 `retrieve.py` 在每次检索时自动生成，系核验「agent 是否实际检索图库」的唯一客观证据。
+- **迁移**：条目可打包为 bundle（zip 格式，内含清单与逐文件校验和）并导入其他设备的图库，遇到冲突时支持跳过、覆盖或重新编号；导入新环境后，可运行 `verify_library.py` 进行健康体检。
 
-学习是否完成由完工清单判定。记录格式见 [references/figure-record.md](references/figure-record.md)，触发行为见 SKILL.md。
+学习流程是否完成由完工清单判定。条目记录格式参见 [references/figure-record.md](references/figure-record.md)，触发机制与行为规范参见 SKILL.md。
 
 ## 安装
 
@@ -34,10 +34,10 @@ python3 ~/.agents/skills/biofigure-self-evolve/scripts/install_hook.py --check
 python3 ~/.agents/skills/biofigure-self-evolve/scripts/install_hook.py --project /path/to/项目
 ```
 
-适用于任何遵循 agents/skills 约定的 agent（目录含带 name/description frontmatter 的 SKILL.md 即为技能）。其他 harness 只要能读文件、抓网页、跑脚本即可驱动，有自有插件格式的加一层薄适配。依赖：
+本技能适用于遵循 agents/skills 规范的各类 agent（目录中包含具备 name 与 description frontmatter 的 SKILL.md 即视为技能）。其他 harness 只要具备文件读写、网页抓取与脚本执行能力即可驱动；若有专有插件格式，仅需添加一层轻量适配。环境依赖：
 
-- 脚本只需 Python 3 标准库（PyYAML 可选，缺省走内置受限解析器；`figure_manifest.py` 的 PDF 页数在有 `pdfinfo` 时更准，没有则退回内置解析、拿不到就留空）；
-- 条目以**配方**为核心，参考实现（`template.R` / `template.py`）可选；要验证参考实现才需要 R（ggplot2）和/或 Python（matplotlib），缺哪边哪边标 `unverified` 或省略该字段；
+- 脚本仅依赖 Python 3 标准库（PyYAML 为可选项，缺省使用内置受限解析器；`figure_manifest.py` 在存在 `pdfinfo` 时能更准确统计 PDF 页数，缺失时退回内置解析，若仍无法获取则置空）；
+- 条目以**配方**为核心，参考实现（`template.R` / `template.py`）为可选项；仅在验证参考实现时需要 R（ggplot2）与/或 Python（matplotlib），环境缺失对应运行时则标注 `unverified` 或缺省该字段；
 - 不依赖任何厂商 API、MCP 或联网服务。
 
 ## 仓库结构
@@ -56,9 +56,9 @@ references/                 # 记录 schema、各来源取图方法、chart_type
 scripts/                    # install_hook / init_library / build_index / retrieve / review_preferences / summary / figure_manifest / pair_check / qa_prompt / mine_feedback / export_figure / import_figure / verify_library
 ```
 
-frontmatter 是刻意收窄的 YAML 子集（标量、单行列表、一层嵌套），没有 YAML 库的环境也能可靠解析。关键字段：`chart_types`（受控词表选词）、`data_shape`（一行写清输入格式）、`use_when` / `not_when`（复用时的语义匹配依据）、`related`（同功能条目互指）、`verified`（只认实际运行结果）。
+frontmatter 采用严格受限的 YAML 子集（仅支持标量、单行列表与单层嵌套），在未安装 YAML 库的环境下亦能可靠解析。核心字段包含：`chart_types`（受控词表选词）、`data_shape`（单行写明输入格式）、`use_when` / `not_when`（复用检索时的语义匹配依据）、`related`（同功能条目互相引用）以及 `verified`（仅认可实际运行检验结果）。
 
-`library/figures/*`、`INDEX.*`、`PREFERENCES.md`、`USAGE.jsonl`、`SUMMARY.*`、`FEEDBACK-CANDIDATES.md` 都被 .gitignore 忽略——学到的条目与个人使用数据不进公开仓库；随仓库发布的 `000-example-grouped-boxplot` 是格式示例，也是新建条目的骨架。公开分享学到的条目请注意原文献版权。
+`library/figures/*`、`INDEX.*`、`PREFERENCES.md`、`USAGE.jsonl`、`SUMMARY.*` 与 `FEEDBACK-CANDIDATES.md` 均已被 .gitignore 忽略：积累的条目与个人使用数据不进入公开仓库；随仓库发布的 `000-example-grouped-boxplot` 既是格式示例，也是创建新条目的初始骨架。公开分享自文献习得的条目时，请注意遵守原文献版权。
 
 ## 脚本
 
@@ -97,4 +97,4 @@ python3 scripts/verify_library.py                     # 体检（可选）：有
 
 ## 许可
 
-MIT，见 [LICENSE](LICENSE)。
+遵循 MIT 许可证，详见 [LICENSE](LICENSE)。
