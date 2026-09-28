@@ -12,6 +12,7 @@ figures/NNN-slug/
 └── template.py       # 可选：参考实现
 ```
 
+- **条目是独立插件**：不引用其他条目、不引用共享文件；单独拷贝或删除都不影响技能与其它条目（`related` 是推荐参考，不是依赖）
 - `NNN`：三位零填充递增序号（001、002…），删除条目后编号不复用
 - `slug`：小写英文连字符，能望文生义（如 `grouped-heatmap`、`km-survival`、`enrichment-dotplot`）
 - 目录名必须与 frontmatter 的 `id` 完全一致

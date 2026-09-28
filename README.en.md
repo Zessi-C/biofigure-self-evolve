@@ -4,7 +4,7 @@
 
 **Scope**: two things only — which figure type to draw (selection + recipe reuse), and how to make the figure look right (aesthetics, layout conventions, style consistency, visual check before delivery). Statistical validity, data pipelines, and table/spreadsheet deliverables are out of scope.
 
-A self-evolving library and reuse engine for bioinformatics figures. The agent stores how figures in papers are drawn as entries in a local library, and reuses them when you plot your own data; entries and preferences keep updating with use. Entry organization follows [FigureYa](https://github.com/ying-ge/FigureYa) (iMetaMed 2025), with maintenance delegated to the agent instead of manual curation.
+A **drawing guide** plus a self-evolving bioinformatics figure library: it helps you pick a chart type when none is specified, guides how to draw and beautify a specified chart, and when nothing in the library matches it designs from aesthetics (learning aesthetics from a reference image if one is given). Global preferences record cross-project drawing conventions. Every library entry is an independent plugin — remove any one of them and the skill and the rest keep working. The agent stores how figures in papers are drawn as entries in a local library, and reuses them when you plot your own data; entries and preferences keep updating with use. Entry organization follows [FigureYa](https://github.com/ying-ge/FigureYa) (iMetaMed 2025), with maintenance delegated to the agent instead of manual curation.
 
 ## How it works
 
@@ -14,7 +14,7 @@ A self-evolving library and reuse engine for bioinformatics figures. The agent s
 - **Learn from your own projects**: say "follow my previous style / add this recipe to the library" and the agent reads your project's plotting scripts first (the source of truth), then the rendered figures, and records your house style (color semantics, sizes, composition, naming, layout) as an entry with `source.type=project`.
 - **Delivery**: for a family of figures, produce the list first (B0); before handing anything over, run the mandatory visual self-check (B5 + `references/delivery-checklist.md`); important figures get an independent QA pass — hand it to a subagent when the harness supports one, otherwise use `qa_prompt.py --self`; log the entry actually used (`retrieve.py --record-used`).
 - **Optional helpers** (only if the project already keeps manifests): `figure_manifest.py` for figure inventory and `--diff` incremental re-rendering, `pair_check.py` for figure-to-table provenance. Figure-side housekeeping, not the core of this skill.
-- **House style lives in preferences, not in shared code**: `scripts/style_tokens.py` is a read-only audit of the project's plotting scripts (duplicated palettes, same name/different colors, theme/size spread) that yields preference candidates to paste into `PREFERENCES.md`; scripts and entry templates stay **self-contained** (each runnable on its own), and consistency comes from the preference record. The skill itself stores no concrete colors — style is described by slots (main/group/diverging/sequential palette, font scale, sizes, export spec). `scripts/mine_feedback.py` (optional; needs session logs) mines user corrections into preference candidates.
+- **Aesthetics and preferences**: when the library has no match, or the user simply wants "that look", learn the **aesthetics** from the reference (color logic, type scale, whitespace, layout strategy) and record it in `PREFERENCES.md` instead of forcing a new entry; cross-project drawing conventions live there too and act as defaults. Scripts and entry templates stay **self-contained**; within-project consistency comes from the preference record, not from shared code. `scripts/mine_feedback.py` (optional; needs session logs) mines user corrections into preference candidates.
 - **Recycling**: a satisfying result becomes a new entry; feedback on an existing entry goes into its template defaults and is logged in the entry's evolution section; habits that recur across figures settle into `library/PREFERENCES.md`.
 - **Consolidation**: cross-figure preferences (`PREFERENCES.md`) and per-entry ones (each entry's reuse notes and evolution log) are periodically reconciled — promoted, merged, demoted, scoped down, or retired — and every pass leaves one dated line behind. `scripts/review_preferences.py` decides when a pass is due and lists the mechanically decidable items; the semantic merge stays with the agent.
 - **Summary**: `scripts/summary.py` produces a periodic quantitative report — library size and monthly growth, reuse ledger (retrievals, hit rate, hottest entries, **unmatched requests -> what to learn next**), preference counts, structural warnings. The ledger is appended by `retrieve.py` on every retrieval and is the only objective evidence of whether the agent actually consults the library.
@@ -53,7 +53,7 @@ library/
     ├── template.R / template.py   # optional reference implementations (how it is written, not an API to call)
     └── template_output_*   # template outputs, kept as known-good baselines
 references/                 # record schema, per-source ingestion, chart_types controlled vocabulary (~40 types), preference profile format, trigger hook, delivery checklist
-scripts/                    # install_hook / init_library / build_index / retrieve / review_preferences / summary / figure_manifest / pair_check / qa_prompt / style_tokens / mine_feedback / export_figure / import_figure / verify_library
+scripts/                    # install_hook / init_library / build_index / retrieve / review_preferences / summary / figure_manifest / pair_check / qa_prompt / mine_feedback / export_figure / import_figure / verify_library
 ```
 
 The frontmatter is a deliberately narrow YAML subset (scalars, single-line lists, one nesting level) that parses reliably without a YAML library. Key fields: `chart_types` (controlled vocabulary), `data_shape` (input format in one line), `use_when` / `not_when` (semantic matching at reuse), `related` (links between functionally adjacent entries), `verified` (actual runs only).
@@ -86,9 +86,7 @@ python3 scripts/figure_manifest.py figure/8.xxx --diff old.csv --only unchanged 
 python3 scripts/pair_check.py figure/8.xxx --tables table/8.xxx   # figure-to-table provenance check
 python3 scripts/qa_prompt.py figure/8.xxx --task "final figures" --out /tmp/qa.md   # build the QA subagent prompt
 
-# Project house style and preference candidates
-python3 scripts/style_tokens.py code/                        # style audit (duplicated palettes / themes / sizes)
-python3 scripts/style_tokens.py code/ --suggest   # preference candidates to paste into PREFERENCES.md
+# Preference candidates
 python3 scripts/mine_feedback.py --since 2026-08-01           # mine corrections -> preference candidates
 
 # Cross-device entry migration (typical: learn figures locally while reading papers, reuse on a server)

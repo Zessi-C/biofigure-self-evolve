@@ -4,7 +4,7 @@
 
 **范围**：管两件事——画什么类型的图（选型 + 配方复用）、怎么把图做好看（美学与排版规范、风格统一、交付前目视验收）。统计口径、数据管道、表格/Excel 交付不在本技能范围内。
 
-自进化的生信 figure 学习库与复用引擎。agent 把文献里看到的图画法存成本地图库条目，你要画图时先查库复用，条目与偏好随使用不断更新。条目组织参考 [FigureYa](https://github.com/ying-ge/FigureYa)（iMetaMed 2025），差异在于维护交给 agent 而非人工。
+一套**绘图引导** + 自进化的 figure 图库：没指定图型时引导选型，指定了图型时引导画法与美学，图库里没有匹配的图时按美学从零设计（有参考图就从参考图学美学）；全局偏好记录跨项目的绘图方式。图库每条记录都是**独立插件**——单独拿走任何一条，技能与其余条目照常工作。agent 把文献里看到的图画法存成本地图库条目，你要画图时先查库复用，条目与偏好随使用不断更新。条目组织参考 [FigureYa](https://github.com/ying-ge/FigureYa)（iMetaMed 2025），差异在于维护交给 agent 而非人工。
 
 ## 工作方式
 
@@ -14,7 +14,7 @@
 - **复用**：画图时按 `use_when` / `data_shape` 检索相近条目，借鉴其技术骨架，轴、阈值、配色按当前数据重新决定；**按配方临摹改写，不是调用/拷贝条目里的参考实现**；多候选时按数据形状 > 意图 > 验证状态排序取前三；
 - **交付**：一套图先出清单（B0）再动手；交付前**强制目视自检**（B5 + `references/delivery-checklist.md`）；重要图加一道独立验收——支持子代理就交给子代理，不支持就用 `qa_prompt.py --self` 自己照做；交付后写回执（`retrieve.py --record-used`）。
 - **可选辅助**（项目已有清单习惯时才用）：`figure_manifest.py` 图件清单与 `--diff` 增量重导、`pair_check.py` 图-表同源核验——属于图件侧的组织，不是本技能核心。
-- **house style 靠偏好，不靠共享依赖**：`scripts/style_tokens.py` 只读体检项目绘图脚本（色板重复、**同名不同色**、主题/尺寸分布），直接给出可写进 `PREFERENCES.md` 的偏好候选；脚本与条目模板始终保持**自包含**（单独拿出来就能跑），风格一致由偏好约束。技能本身不存具体色值，风格只按槽位描述（主色板/分组色板/发散色板/字号层级/尺寸/导出规格…）。`scripts/mine_feedback.py`（可选，取决于 harness 是否留会话日志）定期从会话历史挖用户纠偏，产出偏好候选交整理流程判断。
+- **美学与偏好**：图库里没有匹配的图、或用户只是想要"这种美感"时，从参考图学**美学**（配色逻辑、字号层级、留白、排版策略）写进 `PREFERENCES.md`，不硬造条目；跨项目的绘图方式也沉淀在这里，画图时作为默认值生效。脚本与条目模板始终保持**自包含**（单独拿出来就能跑），项目内的一致靠偏好约束，不靠共享依赖。`scripts/mine_feedback.py`（可选，取决于 harness 是否留会话日志）定期从会话历史挖用户纠偏，产出偏好候选交整理流程判断。
 - **回流**：满意的结果回收为新条目；对已有条目的意见写入其模板缺省值并记入演化记录；跨图反复出现的习惯沉淀到 `library/PREFERENCES.md`。
 - **整理**：整体偏好（`PREFERENCES.md`）与部分偏好（各条目「复用要点」「演化记录」）定期收口——晋升、合并、降级、下沉、清退，并给每次整理留一行记录；`scripts/review_preferences.py` 判到期并列出机械可判定的必做项，语义合并由 agent 判断。
 - **总结**：`scripts/summary.py` 按节律出定量报告——图库规模与月度增长、复用台账（检索次数/命中率/命中热度/**未命中需求 → 待学候选**）、偏好计数、结构告警。台账由 `retrieve.py` 每次检索自动记录，也是「agent 到底有没有在查图库」的唯一客观证据。
@@ -53,7 +53,7 @@ library/
     ├── template.R / template.py   # 可选：参考实现，无参数运行即出图（"怎么写"的示范，不是可调用接口）
     └── template_output_*   # 模板运行产物，作为已知良好输出
 references/                 # 记录 schema、各来源取图方法、chart_types 受控词表（近 40 种）、偏好档案格式、触发钩子、交付清单
-scripts/                    # install_hook / init_library / build_index / retrieve / review_preferences / summary / figure_manifest / pair_check / qa_prompt / style_tokens / mine_feedback / export_figure / import_figure / verify_library
+scripts/                    # install_hook / init_library / build_index / retrieve / review_preferences / summary / figure_manifest / pair_check / qa_prompt / mine_feedback / export_figure / import_figure / verify_library
 ```
 
 frontmatter 是刻意收窄的 YAML 子集（标量、单行列表、一层嵌套），没有 YAML 库的环境也能可靠解析。关键字段：`chart_types`（受控词表选词）、`data_shape`（一行写清输入格式）、`use_when` / `not_when`（复用时的语义匹配依据）、`related`（同功能条目互指）、`verified`（只认实际运行结果）。
@@ -86,9 +86,7 @@ python3 scripts/figure_manifest.py figure/8.xxx --diff old.csv --only unchanged 
 python3 scripts/pair_check.py figure/8.xxx --tables table/8.xxx   # 图-表同源核验
 python3 scripts/qa_prompt.py figure/8.xxx --task "定稿图" --out /tmp/qa.md   # 生成 QA 子代理提示
 
-# 项目 house style 与偏好候选
-python3 scripts/style_tokens.py code/                        # 绘图样式体检（色板重复/主题/尺寸）
-python3 scripts/style_tokens.py code/ --suggest   # 只要"可写进 PREFERENCES.md 的偏好候选"
+# 偏好候选
 python3 scripts/mine_feedback.py --since 2026-08-01           # 从会话历史挖纠偏 → 偏好候选
 
 # 跨设备迁移条目（典型：本机读文献学图 → 服务器跑分析复用）
