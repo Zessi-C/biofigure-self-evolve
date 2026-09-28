@@ -20,6 +20,7 @@
 import argparse
 import collections
 import datetime
+import json
 import difflib
 import json
 import os
@@ -230,13 +231,15 @@ def emit_theme(canon: list, code_dir: str, out_path: str) -> str:
             # 重名色板带上来历后缀：迁移时一眼看出哪个脚本用的是哪一版
             stem = re.sub(r"[^A-Za-z0-9_.]", "_", os.path.splitext(p["files"][0])[0])
             name = f"{base}__{stem}"
-        entries = []
-        for c in p["colors"]:
-            label = p["named"].get(c, "")
-            entries.append(f'{label} = "{c}"' if label else f'"{c}"')
+        entries = [f'"{c}"' for c in p["colors"]]
         sep = "," if i < len(canon) - 1 else ""
         src = ", ".join(p["files"][:3]) + (" …" if len(p["files"]) > 3 else "")
         L.append(f"  # 来自: {src}")
+        labels = [p["named"].get(c, "") for c in p["colors"]]
+        if any(labels):
+            # 名字只作提示：同一套色在不同脚本里可能叫 R/NR 也可能叫 Responder/NonResponder，
+            # theme 只存色值，标签由各脚本自己 names() 还原（见 --migrate）。
+            L.append("  # 常见标签: " + ", ".join(l for l in labels if l))
         L.append(f"  {name} = c({', '.join(entries)}){sep}")
     L += ["  )", "",
           "# 取色板：biofigure_pal(\"group_4group\")；缺名时报错而不是静默给错色",
@@ -323,14 +326,11 @@ def plan_migration(path: str, canon: list, theme_rel: str) -> tuple:
         if not name or len(colors) < 2:
             continue
         hit = by_colors.get(tuple(colors))
-        if hit and hit.get("named"):
-            src_named = {k.strip("'\""): v for k, v in NAMED_COLOR.findall(body)}
-            # 色号一样但语义名不同（Normal/ModSev vs Ctrl/Treat）绝不能自动换：
-            # 脚本会拿 names(pal) 做校验或取子集，换了名字行为就变了。
-            if src_named and src_named != hit["named"]:
-                conflicts.append((name, len(colors),
-                                  [f"名字不同: 本地 {sorted(src_named.values()) and sorted(src_named)} vs theme {sorted(hit['named'])}"]))
-                continue
+        labels = [k.strip("'\"").strip() for k, _ in NAMED_COLOR.findall(body)]
+        if hit and labels and len(labels) != len(colors):
+            # 部分有色名、部分没有：还原标签会改变顺序语义，交人工判断
+            conflicts.append((name, len(colors), ["本地标签不完整（只有部分色值带名字）"]))
+            continue
         if not hit:
             # 色号集合与 theme 不匹配：可能是同名不同色，必须人工判断
             same_name = [p for p in canon if p["name"] == name]
@@ -339,8 +339,12 @@ def plan_migration(path: str, canon: list, theme_rel: str) -> tuple:
             continue
         start = m.start()
         end = m.end() + len(body) + 1
-        old = text[start:end]
+        indent = text[:start].split("\n")[-1]
         new = f'{name} <- biofigure_pal("{hit["name"]}")'
+        if labels:
+            # 原脚本的标签必须原样还原：脚本会拿 names(pal) 校验分组、取子集
+            new += ("\n" + indent + f'names({name}) <- c('
+                    + ", ".join(json.dumps(l) for l in labels) + ")")
         text = text[:start] + new + text[end:]
         changes.append((name, hit["name"], len(colors)))
 
