@@ -121,6 +121,8 @@ def main() -> int:
     if args.input:
         rows = load_input(args.input)
         scanned = 0
+        # 有时间戳就同样按 --since 过滤（没有时间戳的输入无法按日期筛，如实保留）
+        rows = [r for r in rows if not r["ts"] or r["ts"] >= since]
     else:
         roots = args.sessions or DEFAULT_SESSION_ROOTS
         files = session_files(roots)

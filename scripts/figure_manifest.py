@@ -228,7 +228,11 @@ def main() -> int:
     rows = scan(figdir, recursive=not args.flat)
     old = load_csv(csv_path)
     if args.diff:
-        old_diff = load_csv(os.path.abspath(os.path.expanduser(args.diff)))
+        diff_path = os.path.abspath(os.path.expanduser(args.diff))
+        if not os.path.exists(diff_path):
+            print(f"错误: 旧清单不存在 {diff_path}", file=sys.stderr)
+            return 1
+        old_diff = load_csv(diff_path)
         d = diff_manifests(rows, old_diff)
         if args.json:
             print(json.dumps(d, ensure_ascii=False, indent=2))
@@ -280,7 +284,11 @@ def main() -> int:
             print(f"  …另有 {len(rows) - 10} 个")
         return 0
 
-    write_csv(csv_path, rows)
+    try:
+        write_csv(csv_path, rows)
+    except OSError as e:
+        print(f"错误: 写不了 {csv_path}（{e}）——目录只读或磁盘满？", file=sys.stderr)
+        return 1
     print(f"\n已写入 {csv_path}（{len(rows)} 行）。")
     print("语义列 figure_set / entry_reused / source_table / note 需 agent 填：entry_reused 写复用了哪条配方"
           "（如 `013-milo-da-dualtrack-profile`），source_table 写这张图的数据来源表路径（图-表同源，用 pair_check.py 核验）。")

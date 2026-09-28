@@ -36,7 +36,7 @@ python3 ~/.agents/skills/biofigure-self-evolve/scripts/install_hook.py --project
 
 适用于任何遵循 agents/skills 约定的 agent（目录含带 name/description frontmatter 的 SKILL.md 即为技能）。其他 harness 只要能读文件、抓网页、跑脚本即可驱动，有自有插件格式的加一层薄适配。依赖：
 
-- 脚本只需 Python 3 标准库（PyYAML 可选，缺省走内置受限解析器）；
+- 脚本只需 Python 3 标准库（PyYAML 可选，缺省走内置受限解析器；`figure_manifest.py` 的 PDF 页数在有 `pdfinfo` 时更准，没有则退回内置解析、拿不到就留空）；
 - 模板验证需要 R（ggplot2）和/或 Python（matplotlib），缺哪边哪边的条目标 `unverified`；
 - 不依赖任何厂商 API、MCP 或联网服务。
 
@@ -58,7 +58,7 @@ scripts/                    # install_hook / init_library / build_index / retrie
 
 frontmatter 是刻意收窄的 YAML 子集（标量、单行列表、一层嵌套），没有 YAML 库的环境也能可靠解析。关键字段：`chart_types`（受控词表选词）、`data_shape`（一行写清输入格式）、`use_when` / `not_when`（复用时的语义匹配依据）、`related`（同功能条目互指）、`verified`（只认实际运行结果）。
 
-`library/figures/*`、`INDEX.*`、`PREFERENCES.md` 被 .gitignore 忽略，学到的条目不进公开仓库；随仓库发布的 `000-example-grouped-boxplot` 是格式示例，也是新建条目的骨架。公开分享学到的条目请注意原文献版权。
+`library/figures/*`、`INDEX.*`、`PREFERENCES.md`、`USAGE.jsonl`、`SUMMARY.*`、`FEEDBACK-CANDIDATES.md` 都被 .gitignore 忽略——学到的条目与个人使用数据不进公开仓库；随仓库发布的 `000-example-grouped-boxplot` 是格式示例，也是新建条目的骨架。公开分享学到的条目请注意原文献版权。
 
 ## 脚本
 

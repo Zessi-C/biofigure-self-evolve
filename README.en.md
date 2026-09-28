@@ -36,7 +36,7 @@ python3 ~/.agents/skills/biofigure-self-evolve/scripts/install_hook.py --project
 
 Works with any agent that follows the agents/skills convention (a directory containing a SKILL.md with name/description frontmatter). Other harnesses work as long as they can read files, fetch pages, and run scripts; those with their own plugin format only need a thin adapter. Dependencies:
 
-- Scripts need only the Python 3 standard library (PyYAML optional; a restricted built-in parser otherwise).
+- Scripts need only the Python 3 standard library (PyYAML optional; a restricted built-in parser otherwise; `figure_manifest.py` counts PDF pages more reliably when `pdfinfo` is available, otherwise falls back and leaves the count blank if unknown).
 - Template verification needs R (ggplot2) and/or Python (matplotlib); whichever side is missing stays `unverified`.
 - No vendor API, MCP, or network service involved.
 

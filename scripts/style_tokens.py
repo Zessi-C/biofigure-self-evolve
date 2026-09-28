@@ -212,7 +212,8 @@ def emit_theme(canon: list, code_dir: str, out_path: str) -> str:
     today = datetime.date.today().isoformat()
     L = [f"# 项目绘图样式单一事实源 —— 由 biofigure style_tokens.py 生成（{today}）",
          f"# 来源: {code_dir}",
-         "# 用法：绘图脚本里 source(\"code/00.figure_theme.R\")，然后只用这里定义的色板/主题/尺寸。",
+         "# 用法：绘图脚本里按脚本位置 source 它（见 style_tokens.py --migrate 生成的块），",
+         "#       然后只用这里定义的色板/主题/尺寸——不要在脚本里再写一套色值。",
          "# 手工改动请同步回本文件（它是唯一事实源，别在脚本里再写一套）。",
          "",
          "## 色板（去重后；名字取原脚本里最常见的那个）",
@@ -317,7 +318,19 @@ def plan_migration(path: str, canon: list, theme_rel: str) -> tuple:
         for i, line in enumerate(lines[:60]):
             if re.match(r"\s*library\s*\(", line):
                 idx = i + 1
-        lines.insert(idx, f'source("{theme_rel}")  # 项目绘图样式单一事实源（biofigure style_tokens.py 生成）')
+        # 关键：R 的 source() 相对路径是相对**工作目录**解析的，而项目通常用
+        # `cd <项目> && Rscript code/x.R` 运行——直接写 source("00.figure_theme.R")
+        # 会找不到文件。按脚本自身位置定位，两种跑法都对。
+        block = [
+            "# 项目绘图样式单一事实源（biofigure style_tokens.py 生成）——按脚本位置定位，不依赖 cwd",
+            ".biofigure_script_dir <- local({",
+            "  a <- commandArgs(trailingOnly = FALSE)",
+            "  f <- sub(\"^--file=\", \"\", a[grep(\"^--file=\", a)])",
+            "  if (length(f)) dirname(normalizePath(f)) else getwd()",
+            "})",
+            f'source(file.path(.biofigure_script_dir, "{os.path.basename(theme_rel)}"))',
+        ]
+        lines[idx:idx] = block
         text = "\n".join(lines)
     return text, changes, conflicts
 

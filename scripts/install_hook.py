@@ -100,12 +100,19 @@ def uninstall(path: str, dry_run: bool = False) -> str:
     return "已移除钩子" + ("（文件已空，已删除）" if not cleaned.strip() else "")
 
 
-def is_installed(path: str) -> bool:
+def hook_state(path: str) -> str:
+    """已装 / 已装但技能路径过期 / 未装 / 无此文件。
+
+    "有钩子但指向旧路径"和"根本没装"要分开报：前者只需重跑一次刷新，
+    报成"未装"会让人以为钩子没生效过。
+    """
     if not os.path.exists(path):
-        return False
+        return "无此文件"
     with open(path, encoding="utf-8") as fh:
         text = fh.read()
-    return BEGIN in text and SKILL_DIR in text
+    if BEGIN not in text:
+        return "未装"
+    return "已装" if SKILL_DIR in text else "已装但路径过期"
 
 
 def default_targets() -> list:
@@ -160,14 +167,19 @@ def main() -> int:
         return 0
 
     if args.check:
-        ok = True
+        states = {}
         for t in targets:
-            state = "已装" if is_installed(t) else ("未装" if os.path.exists(t) else "无此文件")
-            if state != "已装":
-                ok = False
-            print(f"{state:>6}  {t}")
-        print("\n全部就绪。" if ok else "\n有目标未装钩子：跑 install_hook.py（不带 --check）安装。")
-        return 0 if ok else 1
+            states[t] = hook_state(t)
+            print(f"{states[t]:>10}  {t}")
+        bad = {s for s in states.values() if s != "已装"}
+        if not bad:
+            print("\n全部就绪。")
+            return 0
+        if bad == {"已装但路径过期"}:
+            print("\n钩子都在，但指向的技能路径已过期（技能搬过家）：跑 install_hook.py 刷新即可。")
+        else:
+            print("\n有目标未装钩子：跑 install_hook.py（不带 --check）安装。")
+        return 1
 
     for t in targets:
         state = uninstall(t) if args.uninstall else install(t)
