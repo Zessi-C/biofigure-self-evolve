@@ -71,10 +71,45 @@ def collect_files(code_dir: str, globs: list) -> list:
     return sorted(out)
 
 
-def _balanced_body(text: str, open_idx: int):
-    """从 '(' 的位置取到配对的 ')'，支持跨行与嵌套。"""
+def code_mask(text: str) -> list:
+    """标记哪些字符在 R 代码区（True），哪些在注释或字符串里（False）。
+
+    必须区分：脚本里常有被注释掉的旧定义（`# pal <- c(...)`），正则若匹配到注释，
+    替换就会写进注释、连带破坏后面的代码——实测把一个 600 行的脚本改出语法错误。
+    """
+    mask = [True] * len(text)
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "#":
+            j = text.find("\n", i)
+            j = n if j == -1 else j
+            for k in range(i, j):
+                mask[k] = False
+            i = j
+        elif ch in "\"'":
+            quote, j = ch, i + 1
+            while j < n:
+                if text[j] == "\\":
+                    j += 2
+                    continue
+                if text[j] == quote:
+                    break
+                j += 1
+            for k in range(i, min(j + 1, n)):
+                mask[k] = False
+            i = min(j + 1, n)
+        else:
+            i += 1
+    return mask
+
+
+def _balanced_body(text: str, open_idx: int, mask: list = None):
+    """从 '(' 的位置取到配对的 ')'，支持跨行与嵌套；只在代码区数括号。"""
     depth = 0
     for i in range(open_idx, len(text)):
+        if mask is not None and not mask[i]:
+            continue
         ch = text[i]
         if ch == "(":
             depth += 1
@@ -94,9 +129,12 @@ def extract_palettes(text: str, rel: str) -> list:
     用括号配对而不是正则贪婪匹配：色板定义经常跨行、还会嵌套 c()。
     """
     out = []
+    mask = code_mask(text)
     for m in PALETTE_START.finditer(text):
+        if not mask[m.start()]:
+            continue  # 注释里的旧定义，不算
         name = m.group(1)
-        body = _balanced_body(text, m.end() - 1)
+        body = _balanced_body(text, m.end() - 1, mask)
         colors = HEX.findall(body)
         if len(colors) < 2:
             continue
@@ -317,11 +355,14 @@ def plan_migration(path: str, canon: list, theme_rel: str) -> tuple:
     返回 (新文本, 变更列表, 未自动处理的同名冲突)。
     """
     text = read(path)
+    mask = code_mask(text)
     by_colors = {tuple(p["colors"]): p for p in canon if not p["anonymous"]}
     changes, conflicts = [], []
     for m in list(PALETTE_START.finditer(text)):
+        if not mask[m.start()]:
+            continue  # 注释掉的旧定义不要动
         name = m.group(1)
-        body = _balanced_body(text, m.end() - 1)
+        body = _balanced_body(text, m.end() - 1, mask)
         colors = HEX.findall(body)
         if not name or len(colors) < 2:
             continue
