@@ -357,7 +357,9 @@ def plan_migration(path: str, canon: list, theme_rel: str) -> tuple:
     text = read(path)
     mask = code_mask(text)
     by_colors = {tuple(p["colors"]): p for p in canon if not p["anonymous"]}
-    changes, conflicts = [], []
+    changes, conflicts, edits = [], [], []
+    # 先把所有匹配与替换方案定下来，最后**从后往前**统一改：
+    # 边遍历边改会让后续匹配的偏移全部失效，多色板文件会被改坏（实测踩过）。
     for m in list(PALETTE_START.finditer(text)):
         if not mask[m.start()]:
             continue  # 注释掉的旧定义不要动
@@ -386,8 +388,10 @@ def plan_migration(path: str, canon: list, theme_rel: str) -> tuple:
             # 原脚本的标签必须原样还原：脚本会拿 names(pal) 校验分组、取子集
             new += ("\n" + indent + f'names({name}) <- c('
                     + ", ".join(json.dumps(l) for l in labels) + ")")
-        text = text[:start] + new + text[end:]
+        edits.append((start, end, new))
         changes.append((name, hit["name"], len(colors)))
+    for start, end, new in sorted(edits, key=lambda e: -e[0]):
+        text = text[:start] + new + text[end:]
 
     if changes and f'"{theme_rel}"' not in text and f"'{theme_rel}'" not in text:
         lines = text.split("\n")
