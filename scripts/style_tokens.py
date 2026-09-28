@@ -283,6 +283,26 @@ def emit_theme(canon: list, code_dir: str, out_path: str) -> str:
 
 # ---------------------------------------------------------------- 迁移
 
+def palettes_from_theme(theme_path: str) -> list:
+    """从已生成的 theme 文件读回色板定义。
+
+    批量迁移必须用它而不是重扫代码目录：迁移掉第一个脚本后，那套色板就不再出现在
+    扫描结果里，后面的脚本会匹配不上、静默跳过。theme 文件才是"目标定义"的事实源。
+    """
+    out = []
+    if not os.path.exists(theme_path):
+        return out
+    with open(theme_path, encoding="utf-8") as fh:
+        for line in fh:
+            m = re.match(r"\s*([A-Za-z_][\w.]*)\s*=\s*c\((.*)\)\s*,?\s*$", line)
+            if not m:
+                continue
+            colors = HEX.findall(m.group(2))
+            if len(colors) >= 2:
+                out.append({"name": m.group(1), "colors": colors, "files": [], "anonymous": False})
+    return out
+
+
 def plan_migration(path: str, canon: list, theme_rel: str) -> tuple:
     """把目标脚本里"与 theme 里某套色板完全一致"的本地定义替换成 biofigure_pal()。
 
@@ -345,7 +365,8 @@ def do_migrate(code_dir: str, target: str, canon: list, apply: bool) -> int:
         print(f"错误: 先跑 --emit 生成 {theme}", file=sys.stderr)
         return 1
     theme_rel = os.path.relpath(theme, os.path.dirname(target))
-    new_text, changes, conflicts = plan_migration(target, canon, theme_rel)
+    theme_canon = palettes_from_theme(theme) or canon
+    new_text, changes, conflicts = plan_migration(target, theme_canon, theme_rel)
     if not changes:
         print(f"{os.path.basename(target)}: 没有可自动迁移的色板定义（色号集合与 theme 不一致或没有本地定义）")
         for name, got, opts in conflicts:
