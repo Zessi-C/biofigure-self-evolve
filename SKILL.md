@@ -63,6 +63,7 @@ python3 <技能目录>/scripts/install_hook.py --project /path/to/项目   # omp
 - 复用时提取的是条目的**技术骨架**（图层组织、映射方式、配色逻辑、排版策略、注释手段），其余一切——轴、阈值、色值、分面数、面板构成、尺寸——都按用户当前数据和目的重新决定。用户的目的优先于记录里的任何细节
 - 允许**部分借用**：条目与需求只有局部相似时，就只借那一部分（比如只学它的标签防重叠策略、或只学它的行序联动设计），不要硬套整张图
 - 学习时也要以这个标准写记录：配方写到「技术」层面而非「参数」层面（记"qualitative 色板 + 密度中心标编号"，不要记"必须 8 个群用这 8 个色号"）。原稿的具体数值只作为缺省建议写入复用要点
+- **自包含优先**：条目模板与项目绘图脚本都要能**单独跑起来**——不要为了"风格统一"引入共享 theme / 公共依赖文件。项目内的风格一致由 `PREFERENCES.md` 的偏好约束（画图时遵守），不靠代码互相引用
 - **条目里的代码是「参考实现」，不是「可调用的模板」**：它用来看这套画法具体怎么写、并验证画法跑得通。复用时按配方**临摹改写**（重写数据载入与图层，只借结构、映射、配色逻辑），不要把 `template.R` / `template.py` 整段搬进项目当成品——那会把参考实现的假数据、示例分组与尺寸一起带进来。条目真正的事实源是「配方」那一节
 - 简单说：把条目当「范帖」临摹，不当「模板」填空。交付语也应体现这一点（"参考了 003 的高亮画法，配色/分组按你的数据重排了"），而不是"调用了 003"
 
@@ -157,14 +158,15 @@ python3 <技能目录>/scripts/install_hook.py --project /path/to/项目   # omp
 2. **学"这套项目的做法"而不是抄一张图**：配色语义、尺寸与字号层级、分面/拼合策略、导出规格、命名与目录约定——这些跨图复用价值最高
 3. 记录时 `source.type: project`（见 `references/figure-record.md`），`source.ref` 写脚本路径 + 成图路径；`reference.png` 存该项目的成图（注意脱敏）
 4. **与文献条目的关系**：同一画法若已有文献条目，项目版本通常是它的"落地变体" → 按 A0 登记为变体并 `related` 互指，在对比句里写清"项目 house style vs 原文献画法"的区别
-5. **把 house style 变成跑不掉的约束**（比写进偏好更硬）：
+5. **把 house style 写成偏好，不要写成共享依赖**：
 
 ```bash
-python3 <技能目录>/scripts/style_tokens.py <项目>/code            # 体检：色板清单、重复定义、同名不同色、主题/尺寸分布
-python3 <技能目录>/scripts/style_tokens.py <项目>/code --emit <项目>/code/00.figure_theme.R
+python3 <技能目录>/scripts/style_tokens.py <项目>/code             # 只读体检：色板清单、重复定义、同名不同色、主题/尺寸分布
+python3 <技能目录>/scripts/style_tokens.py <项目>/code --suggest    # 直接给出可粘贴进 PREFERENCES.md 的偏好候选
 ```
 
-   真实项目里同一套配色/主题/尺寸往往在几十个脚本里各写一遍，还会出现**同名不同色**（同一个变量名在不同脚本里指向不同色号集合）——这正是「风格不搭」的隐藏来源。生成共享 theme 文件后，新脚本 `source()` 它，旧脚本逐个迁移（迁移一个跑一个，别一次全改）；条目与 `PREFERENCES.md` 只指向这个文件，**技能里不存任何具体色值**。
+   真实项目里同一套配色/主题/尺寸往往在几十个脚本里各写一遍，还会出现**同名不同色**（同一个变量名在不同脚本里指向不同色号集合）——这正是「风格不搭」的隐藏来源。处理方式是**写成偏好**：把结论按 `references/preference-profile.md` 记进 `PREFERENCES.md`（项目级一定要标适用范围），之后每次画图按偏好执行。
+   **不要**为此引入共享 theme 文件让脚本互相引用：每个脚本/模板都应当**自包含**（单独拿出来就能跑），靠代码耦合换一致性会破坏这种独立性，也让条目模板失去可移植性。
 6. 学完顺手把跨图的那些约定（配色语义、尺寸、命名、目录）按 `references/preference-profile.md` 写进 `PREFERENCES.md` 并标适用范围——它们是项目级偏好，不是全图型通用规则
 
 ### A1 获取图像并确定学习单元
@@ -435,7 +437,7 @@ python3 <技能目录>/scripts/import_figure.py bundle.zip          # 校验完�
 - `scripts/install_hook.py`：把常驻触发钩子写进 agent 指令层（幂等，成对注释块，`--check/--uninstall/--dry-run`，`--project DIR` 装项目级 AGENTS.md）；技能装完就跑它
 - `scripts/summary.py`：定量总结——图库规模与月度增长、复用台账（命中率/热度/未命中需求）、偏好计数、结构告警；`--check` 判到期（退出码 1）、`--write` 落盘 SUMMARY.md、`--json` 给 agent。只读（`--write` 除外）
 - `scripts/qa_prompt.py <图件目录>`：生成图件验收提示（内联交付清单）；有子代理就交给子代理，`--self` 给自己照着走
-- `scripts/style_tokens.py <代码目录>`：绘图样式体检 + `--emit` 生成项目共享 theme 文件 + `--migrate` 迁移本地色板定义（默认 dry-run、自动备份）
+- `scripts/style_tokens.py <代码目录>`：绘图样式**只读体检**（色板重复、同名不同色、主题/尺寸分布）→ 输出可写进 `PREFERENCES.md` 的偏好候选（`--suggest` 只要候选）。不生成代码、不改脚本：风格一致靠偏好约束，不靠共享依赖
 - `scripts/mine_feedback.py`：从会话历史挖用户纠偏，产出偏好候选清单（可选；取决于 harness 是否留会话日志）
 - `scripts/pair_check.py <图件目录> --tables <表格目录>`：图-表同源核验（可选；只在项目本来就图-表配对时用）
 - `scripts/figure_manifest.py <图件目录>`：图件清单——扫描 pdf/png/jpg 记录体积、页数/像素、时间、校验和，语义列（`figure_set`/`entry_reused`/`source_table`/`note`）更新时保留；`--write` 写 `figure_manifest.csv`、`--check` 报未登记文件与被取代的旧图（退出码 1）、`--diff 旧清单.csv` 给增量重导（哪些新增/消失/内容变了/内容没变）

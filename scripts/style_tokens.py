@@ -1,39 +1,38 @@
 #!/usr/bin/env python3
-"""项目绘图样式体检 + 生成共享 theme 文件（把 house style 从"靠记"变成"跑不掉"）。
+"""项目绘图样式体检：找出色板/主题/尺寸的重复与冲突，产出**偏好候选**。
 
-真实项目里同一套配色/主题/尺寸会在几十个脚本里各写一遍，还会出现**同名不同色**
-（同一个变量名在不同脚本里指向不同色号集合）——这正是「风格不搭」的隐藏来源。
-偏好写在 PREFERENCES.md 里还要靠 agent 每次记得用，写进共享 theme 文件则强制生效。
+定位（重要）：这是**只读诊断**，不生成代码、不改脚本、不要求任何共享依赖。
+每个绘图脚本/条目模板都应当**自包含**（单独拿出来就能跑）；项目内的风格一致靠
+`library/PREFERENCES.md` 的偏好约束 + agent 写作时遵守，**不靠脚本互相引用**。
+把脚本耦合到一个共享 theme 文件会破坏这种独立性——所以本工具不提供 emit/migrate。
 
-本脚本是通用工具：只读项目脚本、抽出色板/主题/尺寸，生成的 theme 文件写回**项目**；
-技能本身不存任何具体色值（风格用槽位描述，色值来自项目或 PREFERENCES.md）。
+它回答三个问题：
+  1. 同一套色板在多少个脚本里各写了一遍（重复 → 值得写成一条项目偏好）
+  2. 有没有**同名不同色**（同一个变量名指向不同色号集合 → 最危险的隐性不一致）
+  3. 基础主题/画布尺寸/导出规格有多散（散 → 值得统一成偏好）
 
 用法:
-    style_tokens.py CODE_DIR                      # 体检报告：色板清单、重复定义、主题/尺寸分布
-    style_tokens.py CODE_DIR --emit 00.figure_theme.R   # 生成共享 theme 文件
+    style_tokens.py CODE_DIR            # 诊断报告 + 可直接粘贴的偏好候选
+    style_tokens.py CODE_DIR --suggest  # 只输出偏好候选
     style_tokens.py CODE_DIR --json
-    style_tokens.py CODE_DIR --migrate FILE --apply     # 把 FILE 的本地色板定义改成引用 theme（自动备份）
-    style_tokens.py CODE_DIR --glob "*.R" --glob "*.py"
-
-只读 + 生成一个新文件；不改任何既有脚本。
+    style_tokens.py CODE_DIR --glob "*.py"
 """
 import argparse
 import collections
 import datetime
-import json
-import difflib
 import json
 import os
 import re
 import sys
 
 HEX = re.compile(r"#[0-9A-Fa-f]{6}\b")
-# R 里色值普遍带引号：Normal = "#8B9DAF"。不认引号就会把色板的名字全丢掉，
-# 迁移后 names(pal) 变 NULL，脚本里的 setdiff(levels, names(pal)) 直接报错。
+# R 里色值普遍带引号：Normal = "#8B9DAF"。不认引号就会把色板的名字全丢掉。
 NAMED_COLOR = re.compile(r"""([A-Za-z_][\w.]*|'[^']+'|"[^"]+")\s*=\s*["']?(#[0-9A-Fa-f]{6})["']?""")
 BASE_THEME = re.compile(r"\btheme_(classic|bw|void|minimal|light|dark|linedraw|gray)\s*\(")
 EXPORT = re.compile(r"\b(ggsave|cairo_pdf|pdf|jpeg|png|tiff|svglite)\s*\(([^)]{0,300})")
 NUM = re.compile(r"\b(width|height|dpi|res|quality|units|base_size|pointsize)\s*=\s*([0-9.]+|\"[a-z]+\")")
+# 捕获组：anon=匿名的 values = c(...)；name+op=具名定义（<- 或 =，两者语义不同）
+PALETTE_START = re.compile(r"(?:(?P<anon>values\s*=\s*)|(?P<name>[A-Za-z_][\w.]*)\s*(?P<op><-|=)\s*)c\(")
 
 
 def read(path: str) -> str:
@@ -44,38 +43,10 @@ def read(path: str) -> str:
         return ""
 
 
-GENERATED_MARK = "由 biofigure style_tokens.py 生成"
-
-
-def is_generated(path: str) -> bool:
-    """本脚本生成的 theme 文件不能再被当成源脚本扫描——否则会自反馈：
-    生成的文件里带着 `L4_PALETTE`/`L4_PALETTE_v2`，下一轮扫描就把它们当既有定义。"""
-    try:
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            return GENERATED_MARK in fh.read(400)
-    except OSError:
-        return False
-
-
-def collect_files(code_dir: str, globs: list) -> list:
-    out = []
-    for root, _dirs, files in os.walk(code_dir):
-        for fn in sorted(files):
-            if fn.startswith(".") or fn.endswith((".bak", "~")):
-                continue
-            if any(re.fullmatch(g.replace("*", ".*"), fn) for g in globs):
-                path = os.path.join(root, fn)
-                if is_generated(path):
-                    continue
-                out.append(path)
-    return sorted(out)
-
-
 def code_mask(text: str) -> list:
-    """标记哪些字符在 R 代码区（True），哪些在注释或字符串里（False）。
+    """标记哪些字符在 R 代码区（True），注释或字符串里为 False。
 
-    必须区分：脚本里常有被注释掉的旧定义（`# pal <- c(...)`），正则若匹配到注释，
-    替换就会写进注释、连带破坏后面的代码——实测把一个 600 行的脚本改出语法错误。
+    脚本里常有被注释掉的旧定义（`# pal <- c(...)`），匹配时必须跳过，否则会改到注释。
     """
     mask = [True] * len(text)
     i, n = 0, len(text)
@@ -105,7 +76,7 @@ def code_mask(text: str) -> list:
 
 
 def _balanced_body(text: str, open_idx: int, mask: list = None):
-    """从 '(' 的位置取到配对的 ')'，支持跨行与嵌套；只在代码区数括号。"""
+    """从 '(' 取到配对的 ')'，支持跨行与嵌套；只在代码区数括号。"""
     depth = 0
     for i in range(open_idx, len(text)):
         if mask is not None and not mask[i]:
@@ -120,31 +91,33 @@ def _balanced_body(text: str, open_idx: int, mask: list = None):
     return ""
 
 
-# 捕获组：anon=匿名的 values = c(...)；name+op=具名定义（<- 或 =，两者语义不同必须保留）
-PALETTE_START = re.compile(r"(?:(?P<anon>values\s*=\s*)|(?P<name>[A-Za-z_][\w.]*)\s*(?P<op><-|=)\s*)c\(")
+def collect_files(code_dir: str, globs: list) -> list:
+    out = []
+    for root, _dirs, files in os.walk(code_dir):
+        for fn in sorted(files):
+            if fn.startswith(".") or fn.endswith((".bak", "~")):
+                continue
+            if any(re.fullmatch(g.replace("*", ".*"), fn) for g in globs):
+                out.append(os.path.join(root, fn))
+    return sorted(out)
 
 
 def extract_palettes(text: str, rel: str) -> list:
-    """抓 `name <- c(...)` 与 `scale_*_manual(values = c(...))` 两类色板定义。
-
-    用括号配对而不是正则贪婪匹配：色板定义经常跨行、还会嵌套 c()。
-    """
-    out = []
-    mask = code_mask(text)
+    """抓 `name <- c(...)`、`name = c(...)` 与 `values = c(...)` 三类色板定义。"""
+    out, mask = [], code_mask(text)
     for m in PALETTE_START.finditer(text):
         if not mask[m.start()]:
-            continue  # 注释里的旧定义，不算
+            continue  # 注释里的旧定义不算
         name = m.group("name")
-        op = m.group("op") or "="
         body = _balanced_body(text, m.end() - 1, mask)
         colors = HEX.findall(body)
         if len(colors) < 2:
             continue
         lineno = text[:m.start()].count("\n") + 1
         named = {k.strip("'\""): v for k, v in NAMED_COLOR.findall(body)}
-        out.append({"name": name or f"palette_{rel}:{lineno}", "file": rel, "line": lineno,
-                    "n": len(colors), "colors": colors, "named": named,
-                    "anonymous": name is None})
+        out.append({"name": name or f"inline@{rel}:{lineno}", "file": rel, "line": lineno,
+                    "op": m.group("op") or "=", "n": len(colors), "colors": colors,
+                    "named": named, "anonymous": name is None})
     return out
 
 
@@ -162,66 +135,109 @@ def scan_file(path: str, code_dir: str) -> dict:
 
 
 def canonical_palettes(scans: list) -> list:
-    """按"色号集合"归并同一套色板（不同脚本里名字不同也算同一套）。"""
+    """按「色号序列」归并同一套色板（顺序不同视为不同色板）。"""
     groups = {}
     for s in scans:
         for p in s["palettes"]:
-            key = tuple(sorted(set(p["colors"])))
-            g = groups.setdefault(key, {"colors": p["colors"], "named": {}, "names": collections.Counter(),
-                                        "files": [], "n": p["n"]})
+            key = tuple(p["colors"])
+            g = groups.setdefault(key, {"colors": p["colors"], "names": collections.Counter(),
+                                        "files": [], "named": {}})
             g["names"][p["name"]] += 1
             g["files"].append(p["file"])
             for k, v in p["named"].items():
                 g["named"].setdefault(v, k)
     out = []
-    for key, g in groups.items():
-        # 名字取出现次数最多的；同一色号若在别处有语义名，沿用语义名
+    for g in groups.values():
         name = g["names"].most_common(1)[0][0]
-        ordered = list(dict.fromkeys(g["colors"]))
-        out.append({"name": name, "colors": ordered, "files": sorted(set(g["files"])),
-                    "named": g["named"], "aliases": sorted(g["names"]),
-                    "anonymous": all(a.startswith("palette_") for a in g["names"])})
-    out.sort(key=lambda x: (-len(x["files"]), -x["colors"].__len__(), x["name"]))
+        out.append({"name": name, "colors": list(dict.fromkeys(g["colors"])),
+                    "files": sorted(set(g["files"])), "named": g["named"],
+                    "aliases": sorted(g["names"]),
+                    "anonymous": all(a.startswith("inline@") for a in g["names"])})
+    out.sort(key=lambda x: (-len(x["files"]), -len(x["colors"]), x["name"]))
     return out
 
 
-def render_report(scans: list, canon: list, code_dir: str) -> str:
+def preference_candidates(canon: list, themes, sizes, code_dir: str, today: str) -> list:
+    """把体检结论翻译成「可写进 PREFERENCES.md 的偏好候选」。
+
+    措辞里明确写「脚本内保持自包含定义」——风格一致靠偏好约束，不靠共享依赖。
+    """
+    proj = os.path.basename(os.path.normpath(code_dir))
+    out = []
+    name_map = collections.defaultdict(list)
+    for p in canon:
+        name_map[p["name"]].append(p)
+
+    for p in canon:
+        if p["anonymous"] or len(p["files"]) < 2:
+            continue
+        colors = " / ".join(p["colors"][:8]) + (" …" if len(p["colors"]) > 8 else "")
+        out.append(f"- {proj} 统一色板 `{p['name']}`（{len(p['colors'])} 色）：{colors}"
+                   f"〔{today} style_tokens 体检，{len(p['files'])} 个脚本重复定义，"
+                   f"适用范围：{proj}；脚本内保持自包含定义，不要引入共享 theme 依赖〕")
+
+    for name, ps in sorted(name_map.items()):
+        if len(ps) < 2:
+            continue
+        detail = "；".join(f"{len(q['colors'])} 色（{', '.join(q['files'][:3])}）" for q in ps)
+        out.append(f"- ⚠ 待裁决：`{name}` 同名不同色——{detail}"
+                   f"〔{today} style_tokens 体检，适用范围：{proj}；先定哪一版为准，再写入偏好〕")
+
+    if len(themes) > 1:
+        top = "、".join(f"{k}×{v}" for k, v in themes.most_common())
+        out.append(f"- {proj} 基础主题统一为 `theme_{themes.most_common(1)[0][0]}`"
+                   f"（当前混用：{top}）〔{today} style_tokens 体检，适用范围：{proj}〕")
+    for key in ("width", "height", "dpi", "res", "quality"):
+        vals = sizes.get(key)
+        if vals and len(vals) > 2:
+            top = "、".join(f"{v}×{c}" for v, c in vals.most_common(4))
+            out.append(f"- {proj} 导出规格 `{key}` 统一（当前分布：{top}）"
+                       f"〔{today} style_tokens 体检，适用范围：{proj}〕")
+    return out
+
+
+def render_report(scans, canon, cands, code_dir, today) -> str:
     all_colors = collections.Counter()
     for s in scans:
         all_colors.update(s["colors"])
     themes = collections.Counter()
     for s in scans:
         themes.update(s["themes"])
-    exports = collections.Counter()
-    sizes = collections.defaultdict(collections.Counter)
+    exports, sizes = collections.Counter(), collections.defaultdict(collections.Counter)
     for s in scans:
         for e in s["exports"]:
             exports[e["fn"]] += 1
             for k, v in e["spec"].items():
                 sizes[k][v] += 1
-    L = [f"# 绘图样式体检（{datetime.date.today().isoformat()}）", "",
+
+    L = [f"# 绘图样式体检（{today}）", "",
          f"扫描目录: {code_dir}　脚本 {len(scans)} 个，共 {sum(s['lines'] for s in scans)} 行",
-         f"十六进制色值出现 {sum(all_colors.values())} 次，唯一色号 {len(all_colors)} 个", ""]
-    L += ["## 1. 色板定义（按色号集合归并）"]
-    for i, p in enumerate(canon[:20], 1):
-        L.append(f"- `{p['name']}`（{len(p['colors'])} 色，{len(p['files'])} 个脚本"
-                 + (f"，别名 {', '.join(p['aliases'][:4])}" if len(p["aliases"]) > 1 else "") + "）")
+         f"十六进制色值出现 {sum(all_colors.values())} 次，唯一色号 {len(all_colors)} 个", "",
+         "> 本报告是**只读诊断**：产出偏好候选，不改代码、不生成共享依赖。",
+         "> 每个脚本/模板保持自包含；项目内风格一致靠 `library/PREFERENCES.md` 的偏好约束。", ""]
+
+    L += ["## 1. 色板清单（按色号序列归并）"]
+    for p in canon[:20]:
+        tag = "（匿名内联）" if p["anonymous"] else ""
+        L.append(f"- `{p['name']}`{tag}：{len(p['colors'])} 色，{len(p['files'])} 个脚本"
+                 + (f"，别名 {', '.join(p['aliases'][:4])}" if len(p["aliases"]) > 1 else ""))
         L.append(f"    {' '.join(p['colors'][:10])}" + (" …" if len(p["colors"]) > 10 else ""))
     if not canon:
-        L.append("- （没找到成组色板定义；色值是散落的，更需要统一）")
+        L.append("- （没找到成组色板定义）")
     L.append("")
-    dup = [p for p in canon if len(p["files"]) > 1]
-    L += ["## 2. 重复定义（同一套色板在多个脚本里各写一遍）",
-          f"- {len(dup)} 套色板被重复定义，共涉及 {sum(len(p['files']) for p in dup)} 处"]
+
+    dup = [p for p in canon if len(p["files"]) > 1 and not p["anonymous"]]
+    L += ["## 2. 重复定义（同一套色在多个脚本里各写一遍）",
+          f"- {len(dup)} 套，共 {sum(len(p['files']) for p in dup)} 处"]
     for p in dup[:10]:
-        L.append(f"  - `{p['name']}`：{', '.join(p['files'][:6])}"
-                 + (" …" if len(p["files"]) > 6 else ""))
+        L.append(f"  - `{p['name']}`：{', '.join(p['files'][:6])}" + (" …" if len(p["files"]) > 6 else ""))
     L.append("")
+
     name_map = collections.defaultdict(list)
     for p in canon:
         name_map[p["name"]].append(p)
     clashes = {n: ps for n, ps in name_map.items() if len(ps) > 1}
-    L += ["## 3. 同名不同色（同一个变量名在不同脚本里指向不同色号集合——最危险的一类）"]
+    L += ["## 3. 同名不同色（最危险的一类隐性不一致）"]
     if clashes:
         for n, ps in sorted(clashes.items()):
             L.append(f"- `{n}`：{len(ps)} 个版本")
@@ -231,234 +247,23 @@ def render_report(scans: list, canon: list, code_dir: str) -> str:
     else:
         L.append("- （无）")
     L.append("")
-    L += ["## 4. 基础主题分布",
-          "- " + "、".join(f"{k} {v}" for k, v in themes.most_common()) if themes else "- （未检出）"]
+
+    L += ["## 4. 主题与导出规格分布",
+          "- 基础主题: " + ("、".join(f"{k} {v}" for k, v in themes.most_common()) if themes else "（未检出）"),
+          "- 导出函数: " + ("、".join(f"{k} {v}" for k, v in exports.most_common()) if exports else "（未检出）")]
+    for key in ("width", "height", "dpi", "res", "quality"):
+        if sizes[key]:
+            L.append(f"- {key}: " + "、".join(f"{v}×{c}" for v, c in sizes[key].most_common(5)))
     L.append("")
-    L += ["## 5. 导出规格"]
-    L.append("- 函数: " + "、".join(f"{k} {v}" for k, v in exports.most_common()))
-    for k in ("width", "height", "dpi", "res", "quality"):
-        if sizes[k]:
-            top = "、".join(f"{v}×{c}" for v, c in sizes[k].most_common(5))
-            L.append(f"- {k}: {top}")
-    L += ["", "## 6. 建议",
-          "1. `--emit 00.figure_theme.R` 生成共享 theme 文件：把上面的色板去重成命名色板 + 统一主题 + 统一导出函数",
-          "2. 新脚本 `source()` 它；旧脚本逐步迁移（迁移一个跑一个，别一次全改）",
-          "3. 把跨图约定按 `references/preference-profile.md` 写进 `PREFERENCES.md`（标适用范围），并把 theme 文件路径写进条目「复用要点」",
-          f"4. 迁移完成后重跑本脚本：唯一色号数应明显下降（当前 {len(all_colors)} 个）"]
+
+    L += ["## 5. 建议写进偏好档案的条目（可直接粘贴，确认后再写入）"]
+    L += cands or ["- （暂无可提炼的候选：色板没有跨脚本重复，也没有同名不同色）"]
+    L += ["", "## 收尾",
+          "1. 逐条判断：跨图型通用 → 写进 `PREFERENCES.md` 稳定偏好；只服务本项目 → 同样写进档案但**标适用范围**",
+          "2. `⚠ 待裁决` 的同名不同色先定哪一版为准（这是真会画错的地方）",
+          "3. **不要**为了让脚本一致而引入共享 theme 文件——脚本/模板保持自包含，一致性由偏好约束",
+          "4. 整理动作与记录格式见 `references/preference-profile.md`"]
     return "\n".join(L)
-
-
-def emit_theme(canon: list, code_dir: str, out_path: str) -> str:
-    named = [p for p in canon if not p.get("anonymous")]
-    if named:
-        canon = named
-    today = datetime.date.today().isoformat()
-    L = [f"# 项目绘图样式单一事实源 —— 由 biofigure style_tokens.py 生成（{today}）",
-         f"# 来源: {code_dir}",
-         "# 用法：绘图脚本里按脚本位置 source 它（见 style_tokens.py --migrate 生成的块），",
-         "#       然后只用这里定义的色板/主题/尺寸——不要在脚本里再写一套色值。",
-         "# 手工改动请同步回本文件（它是唯一事实源，别在脚本里再写一套）。",
-         "",
-         "## 色板（去重后；名字取原脚本里最常见的那个）",
-         "biofigure_palettes <- list("]
-    used = collections.Counter()
-    for i, p in enumerate(canon):
-        base = re.sub(r"[^A-Za-z0-9_.]", "_", p["name"])
-        used[base] += 1
-        if used[base] == 1:
-            name = base
-        else:
-            # 重名色板带上来历后缀：迁移时一眼看出哪个脚本用的是哪一版
-            stem = re.sub(r"[^A-Za-z0-9_.]", "_", os.path.splitext(p["files"][0])[0])
-            name = f"{base}__{stem}"
-        entries = [f'"{c}"' for c in p["colors"]]
-        sep = "," if i < len(canon) - 1 else ""
-        src = ", ".join(p["files"][:3]) + (" …" if len(p["files"]) > 3 else "")
-        L.append(f"  # 来自: {src}")
-        labels = [p["named"].get(c, "") for c in p["colors"]]
-        if any(labels):
-            # 名字只作提示：同一套色在不同脚本里可能叫 R/NR 也可能叫 Responder/NonResponder，
-            # theme 只存色值，标签由各脚本自己 names() 还原（见 --migrate）。
-            L.append("  # 常见标签: " + ", ".join(l for l in labels if l))
-        L.append(f"  {name} = c({', '.join(entries)}){sep}")
-    L += ["  )", "",
-          "# 取色板：biofigure_pal(\"group_4group\")；缺名时报错而不是静默给错色",
-          "biofigure_pal <- function(name) {",
-          "  if (!name %in% names(biofigure_palettes)) {",
-          "    stop(sprintf(\"Unknown palette '%s'. Known: %s\", name, paste(names(biofigure_palettes), collapse = \", \")))",
-          "  }",
-          "  biofigure_palettes[[name]]",
-          "}", "",
-          "## 主题：统一基础主题 + 常用微调（各脚本不再各写一套 theme()）",
-          "biofigure_theme <- function(base_size = 11, base_family = \"\", legend_position = \"right\") {",
-          "  ggplot2::theme_classic(base_size = base_size, base_family = base_family) +",
-          "    ggplot2::theme(",
-          "      axis.text = ggplot2::element_text(colour = \"grey20\"),",
-          "      axis.title = ggplot2::element_text(colour = \"grey10\"),",
-          "      axis.line = ggplot2::element_line(linewidth = 0.4, colour = \"grey30\"),",
-          "      axis.ticks = ggplot2::element_line(linewidth = 0.4, colour = \"grey30\"),",
-          "      strip.background = ggplot2::element_blank(),",
-          "      strip.text = ggplot2::element_text(face = \"bold\"),",
-          "      panel.grid = ggplot2::element_blank(),",
-          "      legend.position = legend_position,",
-          "      legend.key.size = grid::unit(0.35, \"cm\"),",
-          "      plot.title = ggplot2::element_text(face = \"bold\", hjust = 0.5),",
-          "      plot.margin = ggplot2::margin(6, 8, 6, 8)",
-          "    )",
-          "}", "",
-          "## 尺寸：常用画布（英寸）。显式指定，别靠默认值。",
-          "biofigure_size <- list(single = c(6, 5), wide = c(10, 5), tall = c(6, 9), square = c(6, 6))",
-          "",
-          "## 导出：默认 PDF 矢量；需要高清预览时额外出 JPG（600dpi, quality 100）",
-          "biofigure_save <- function(plot, stem, width, height, jpg = FALSE, dpi = 600) {",
-          "  grDevices::cairo_pdf(paste0(stem, \".pdf\"), width = width, height = height)",
-          "  print(plot)",
-          "  grDevices::dev.off()",
-          "  if (isTRUE(jpg)) {",
-          "    grDevices::jpeg(paste0(stem, \".jpg\"), width = width, height = height,",
-          "                    units = \"in\", res = dpi, quality = 100)",
-          "    print(plot)",
-          "    grDevices::dev.off()",
-          "  }",
-          "  invisible(c(paste0(stem, \".pdf\"), if (isTRUE(jpg)) paste0(stem, \".jpg\")))",
-          "}", ""]
-    return "\n".join(L)
-
-
-
-# ---------------------------------------------------------------- 迁移
-
-def palettes_from_theme(theme_path: str) -> list:
-    """从已生成的 theme 文件读回色板定义。
-
-    批量迁移必须用它而不是重扫代码目录：迁移掉第一个脚本后，那套色板就不再出现在
-    扫描结果里，后面的脚本会匹配不上、静默跳过。theme 文件才是"目标定义"的事实源。
-    """
-    out = []
-    if not os.path.exists(theme_path):
-        return out
-    with open(theme_path, encoding="utf-8") as fh:
-        for line in fh:
-            m = re.match(r"\s*([A-Za-z_][\w.]*)\s*=\s*c\((.*)\)\s*,?\s*$", line)
-            if not m:
-                continue
-            colors = HEX.findall(m.group(2))
-            if len(colors) >= 2:
-                named = {k.strip("'\""): v for k, v in NAMED_COLOR.findall(m.group(2))}
-                out.append({"name": m.group(1), "colors": colors, "named": named,
-                            "files": [], "anonymous": False})
-    return out
-
-
-def plan_migration(path: str, canon: list, theme_rel: str) -> tuple:
-    """把目标脚本里"与 theme 里某套色板完全一致"的本地定义替换成 biofigure_pal()。
-
-    只替换色号集合**完全一致**的定义——不一致的（同名不同色）绝不自动改，报出来让人判断。
-    返回 (新文本, 变更列表, 未自动处理的同名冲突)。
-    """
-    text = read(path)
-    mask = code_mask(text)
-    by_colors = {tuple(p["colors"]): p for p in canon if not p["anonymous"]}
-    changes, conflicts, edits = [], [], []
-    # 先把所有匹配与替换方案定下来，最后**从后往前**统一改：
-    # 边遍历边改会让后续匹配的偏移全部失效，多色板文件会被改坏（实测踩过）。
-    for m in list(PALETTE_START.finditer(text)):
-        if not mask[m.start()]:
-            continue  # 注释掉的旧定义不要动
-        name = m.group("name")
-        op = m.group("op") or "="
-        body = _balanced_body(text, m.end() - 1, mask)
-        colors = HEX.findall(body)
-        if not name or len(colors) < 2:
-            continue
-        hit = by_colors.get(tuple(colors))
-        labels = [k.strip("'\"").strip() for k, _ in NAMED_COLOR.findall(body)]
-        if hit and labels and len(labels) != len(colors):
-            # 部分有色名、部分没有：还原标签会改变顺序语义，交人工判断
-            conflicts.append((name, len(colors), ["本地标签不完整（只有部分色值带名字）"]))
-            continue
-        if not hit:
-            # 色号集合与 theme 不匹配：可能是同名不同色，必须人工判断
-            same_name = [p for p in canon if p["name"] == name]
-            if same_name:
-                conflicts.append((name, len(colors), [len(p["colors"]) for p in same_name]))
-            continue
-        start = m.start()
-        end = m.end() + len(body) + 1
-        # 单表达式替换：既保留原运算符（`=` 在 list(...) 里是具名参数，换成 <- 会改语义），
-        # 又用 setNames 内联标签（不用额外语句，因此两种上下文都成立）。
-        expr = f'biofigure_pal("{hit["name"]}")'
-        if labels:
-            expr = f'setNames({expr}, c({", ".join(json.dumps(l) for l in labels)}))'
-        new = f'{name} {op} {expr}'
-        edits.append((start, end, new))
-        changes.append((name, hit["name"], len(colors)))
-    for start, end, new in sorted(edits, key=lambda e: -e[0]):
-        text = text[:start] + new + text[end:]
-
-    if changes and f'"{theme_rel}"' not in text and f"'{theme_rel}'" not in text:
-        lines = text.split("\n")
-        # 插入位置：shebang 之后 → 最后一个 library() 之后 → 文件开头。
-        # 少了 shebang 判断会把 `#!/usr/bin/env Rscript` 顶到第 8 行（实测两个脚本中招）。
-        idx = 1 if lines and lines[0].startswith("#!") else 0
-        for i, line in enumerate(lines[:60]):
-            if re.match(r"\s*library\s*\(", line):
-                idx = i + 1
-        # 关键：R 的 source() 相对路径是相对**工作目录**解析的，而项目通常用
-        # `cd <项目> && Rscript code/x.R` 运行——直接写 source("00.figure_theme.R")
-        # 会找不到文件。按脚本自身位置定位，两种跑法都对。
-        block = [
-            "# 项目绘图样式单一事实源（biofigure style_tokens.py 生成）——按脚本位置定位，不依赖 cwd",
-            ".biofigure_script_dir <- local({",
-            "  a <- commandArgs(trailingOnly = FALSE)",
-            "  f <- sub(\"^--file=\", \"\", a[grep(\"^--file=\", a)])",
-            "  if (length(f)) dirname(normalizePath(f)) else getwd()",
-            "})",
-            f'source(file.path(.biofigure_script_dir, "{os.path.basename(theme_rel)}"))',
-        ]
-        lines[idx:idx] = block
-        text = "\n".join(lines)
-    return text, changes, conflicts
-
-
-def do_migrate(code_dir: str, target: str, canon: list, apply: bool) -> int:
-    target = os.path.abspath(os.path.expanduser(target))
-    if not os.path.isfile(target):
-        print(f"错误: 不是文件 {target}", file=sys.stderr)
-        return 1
-    theme = os.path.join(code_dir, "00.figure_theme.R")
-    if not os.path.exists(theme):
-        print(f"错误: 先跑 --emit 生成 {theme}", file=sys.stderr)
-        return 1
-    theme_rel = os.path.relpath(theme, os.path.dirname(target))
-    theme_canon = palettes_from_theme(theme) or canon
-    new_text, changes, conflicts = plan_migration(target, theme_canon, theme_rel)
-    if not changes:
-        print(f"{os.path.basename(target)}: 没有可自动迁移的色板定义（色号集合与 theme 不一致或没有本地定义）")
-        for name, got, opts in conflicts:
-            print(f"  ⚠ `{name}` 本地 {got} 色，theme 里有 {opts} 色的同名版本 —— 需人工判断，不自动改")
-        return 0
-    diff = list(difflib.unified_diff(read(target).splitlines(), new_text.splitlines(),
-                                     fromfile=os.path.basename(target) + "（原）",
-                                     tofile=os.path.basename(target) + "（迁移后）", lineterm="", n=1))
-    print("\n".join(diff[:80]))
-    if len(diff) > 80:
-        print(f"…（diff 共 {len(diff)} 行）")
-    for name, hit, n in changes:
-        print(f"  {name}（{n} 色）→ biofigure_pal(\"{hit}\")")
-    for name, got, opts in conflicts:
-        print(f"  ⚠ `{name}` 本地 {got} 色、theme 同名版本 {opts} 色 —— 不自动改")
-    if not apply:
-        print("\n（dry-run；确认 diff 后加 --apply 写盘，会自动备份 .bak-<日期>）")
-        return 0
-    bak = target + ".bak-" + datetime.date.today().strftime("%Y%m%d")
-    with open(bak, "w", encoding="utf-8") as fh:
-        fh.write(read(target))
-    with open(target, "w", encoding="utf-8") as fh:
-        fh.write(new_text)
-    print(f"\n已写盘（备份 {os.path.basename(bak)}）。**必须重跑这个脚本并对比成图**——"
-          "迁移只保证色号一致，运行是否正常要靠实跑确认。")
-    return 0
 
 
 def main() -> int:
@@ -467,10 +272,8 @@ def main() -> int:
     parser.add_argument("code_dir", help="脚本目录（如 <项目>/code）")
     parser.add_argument("--glob", action="append", default=[], metavar="PATTERN",
                         help="文件匹配（可重复，默认 *.R；Python 项目用 --glob '*.py'）")
-    parser.add_argument("--emit", metavar="PATH", help="生成共享 theme 文件到该路径")
+    parser.add_argument("--suggest", action="store_true", help="只输出偏好候选")
     parser.add_argument("--json", action="store_true", help="输出 JSON")
-    parser.add_argument("--migrate", metavar="FILE", help="把该脚本的本地色板定义改成引用 theme")
-    parser.add_argument("--apply", action="store_true", help="配合 --migrate：真正写盘（默认 dry-run）")
     args = parser.parse_args()
 
     code_dir = os.path.abspath(os.path.expanduser(args.code_dir))
@@ -485,32 +288,27 @@ def main() -> int:
 
     scans = [scan_file(p, code_dir) for p in files]
     canon = canonical_palettes(scans)
-
-    if args.migrate:
-        return do_migrate(code_dir, args.migrate, canon, args.apply)
-
-    if args.emit:
-        out = os.path.abspath(os.path.expanduser(args.emit))
-        os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-        if os.path.exists(out):
-            print(f"错误: {out} 已存在，先备份或改名（本脚本不覆盖已有文件）", file=sys.stderr)
-            return 1
-        with open(out, "w", encoding="utf-8") as fh:
-            fh.write(emit_theme(canon, code_dir, out))
-        print(f"已生成 {out}（{len(canon)} 套去重色板）")
-        print("下一步：挑一个绘图脚本改成 source() 它并重跑对比成图；确认一致后再逐个迁移。")
-        return 0
+    themes, sizes = collections.Counter(), collections.defaultdict(collections.Counter)
+    for s in scans:
+        themes.update(s["themes"])
+        for e in s["exports"]:
+            for k, v in e["spec"].items():
+                sizes[k][v] += 1
+    today = datetime.date.today().isoformat()
+    cands = preference_candidates(canon, themes, sizes, code_dir, today)
 
     if args.json:
         print(json.dumps({"dir": code_dir, "files": [s["file"] for s in scans],
-                          "canonical_palettes": canon,
-                          "unique_colors": sorted({c for s in scans for c in s["colors"]}),
-                          "themes": dict(collections.Counter(
-                              {k: v for s in scans for k, v in s["themes"].items()}))},
+                          "palettes": canon, "themes": dict(themes),
+                          "preference_candidates": cands,
+                          "unique_colors": sorted({c for s in scans for c in s["colors"]})},
                          ensure_ascii=False, indent=2))
         return 0
+    if args.suggest:
+        print("\n".join(cands) if cands else "（暂无可提炼的候选）")
+        return 0
 
-    print(render_report(scans, canon, code_dir))
+    print(render_report(scans, canon, cands, code_dir, today))
     return 0
 
 

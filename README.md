@@ -14,7 +14,7 @@
 - **复用**：画图时按 `use_when` / `data_shape` 检索相近条目，借鉴其技术骨架，轴、阈值、配色按当前数据重新决定；**按配方临摹改写，不是调用/拷贝条目里的参考实现**；多候选时按数据形状 > 意图 > 验证状态排序取前三；
 - **交付**：一套图先出清单（B0）再动手；交付前**强制目视自检**（B5 + `references/delivery-checklist.md`）；重要图加一道独立验收——支持子代理就交给子代理，不支持就用 `qa_prompt.py --self` 自己照做；交付后写回执（`retrieve.py --record-used`）。
 - **可选辅助**（项目已有清单习惯时才用）：`figure_manifest.py` 图件清单与 `--diff` 增量重导、`pair_check.py` 图-表同源核验——属于图件侧的组织，不是本技能核心。
-- **house style 落地**：`scripts/style_tokens.py` 体检项目绘图脚本（色板重复、同名不同色、主题/尺寸分布），`--emit` 生成**项目自己的**共享 theme 文件，让「记住的偏好」变成「跑不掉的约束」；技能本身不存具体色值，风格只按槽位描述（主色板/分组色板/发散色板/字号层级/尺寸/导出规格…）。`scripts/mine_feedback.py`（可选，取决于 harness 是否留会话日志）定期从会话历史挖用户纠偏，产出偏好候选交整理流程判断。
+- **house style 靠偏好，不靠共享依赖**：`scripts/style_tokens.py` 只读体检项目绘图脚本（色板重复、**同名不同色**、主题/尺寸分布），直接给出可写进 `PREFERENCES.md` 的偏好候选；脚本与条目模板始终保持**自包含**（单独拿出来就能跑），风格一致由偏好约束。技能本身不存具体色值，风格只按槽位描述（主色板/分组色板/发散色板/字号层级/尺寸/导出规格…）。`scripts/mine_feedback.py`（可选，取决于 harness 是否留会话日志）定期从会话历史挖用户纠偏，产出偏好候选交整理流程判断。
 - **回流**：满意的结果回收为新条目；对已有条目的意见写入其模板缺省值并记入演化记录；跨图反复出现的习惯沉淀到 `library/PREFERENCES.md`。
 - **整理**：整体偏好（`PREFERENCES.md`）与部分偏好（各条目「复用要点」「演化记录」）定期收口——晋升、合并、降级、下沉、清退，并给每次整理留一行记录；`scripts/review_preferences.py` 判到期并列出机械可判定的必做项，语义合并由 agent 判断。
 - **总结**：`scripts/summary.py` 按节律出定量报告——图库规模与月度增长、复用台账（检索次数/命中率/命中热度/**未命中需求 → 待学候选**）、偏好计数、结构告警。台账由 `retrieve.py` 每次检索自动记录，也是「agent 到底有没有在查图库」的唯一客观证据。
@@ -88,7 +88,7 @@ python3 scripts/qa_prompt.py figure/8.xxx --task "定稿图" --out /tmp/qa.md   
 
 # 项目 house style 与偏好候选
 python3 scripts/style_tokens.py code/                        # 绘图样式体检（色板重复/主题/尺寸）
-python3 scripts/style_tokens.py code/ --emit code/00.figure_theme.R   # 生成共享 theme 文件
+python3 scripts/style_tokens.py code/ --suggest   # 只要"可写进 PREFERENCES.md 的偏好候选"
 python3 scripts/mine_feedback.py --since 2026-08-01           # 从会话历史挖纠偏 → 偏好候选
 
 # 跨设备迁移条目（典型：本机读文献学图 → 服务器跑分析复用）
