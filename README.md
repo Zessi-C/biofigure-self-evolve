@@ -2,6 +2,8 @@
 
 # biofigure-self-evolve
 
+**范围**：管两件事——画什么类型的图（选型 + 配方复用）、怎么把图做好看（美学与排版规范、风格统一、交付前目视验收）。统计口径、数据管道、表格/Excel 交付不在本技能范围内。
+
 自进化的生信 figure 学习库与复用引擎。agent 把文献里看到的图画法存成本地图库条目，你要画图时先查库复用，条目与偏好随使用不断更新。条目组织参考 [FigureYa](https://github.com/ying-ge/FigureYa)（iMetaMed 2025），差异在于维护交给 agent 而非人工。
 
 ## 工作方式
@@ -10,8 +12,9 @@
 - **学习**：把文献、PDF、文章、截图发给 agent，它判断按单图、成组还是组合版式记录，并优先追溯原始绘图代码（正文内嵌代码 > GitHub 仓库 > 论文 DOI → PMC code availability），都找不到才看图反推且如实标注；
 - **从项目历史学**：说「参考我之前的风格 / 把这套画法入库」，agent 先读项目绘图脚本（事实源）再读成图，把 house style（配色语义、尺寸字号、拼合、命名目录）学成条目（`source.type=project`）——文献条目给你新画法，项目条目给你自己的风格；
 - **复用**：画图时按 `use_when` / `data_shape` 检索相近条目，借鉴其技术骨架，轴、阈值、配色按当前数据重新决定；多候选时按数据形状 > 意图 > 验证状态排序取前三；
-- **交付**：一套图先出清单（B0）再动手；交付前**强制目视自检**（B5 + `references/delivery-checklist.md`），重要图走一次对抗式验收（`scripts/qa_prompt.py` 生成 QA 子代理提示）；更新图件清单与图-表同源核验（`figure_manifest.py` / `pair_check.py`），批量重导用 `--diff` 跳过 hash 未变的图；交付后写回执（`retrieve.py --record-used`）。
-- **house style 落地**：`scripts/style_tokens.py` 体检项目绘图脚本（色板重复、主题/尺寸分布），`--emit` 生成共享 theme 文件，让"记住的偏好"变成"跑不掉的约束"；`scripts/mine_feedback.py` 定期从会话历史挖用户纠偏，产出偏好候选交整理流程判断。
+- **交付**：一套图先出清单（B0）再动手；交付前**强制目视自检**（B5 + `references/delivery-checklist.md`）；重要图加一道独立验收——支持子代理就交给子代理，不支持就用 `qa_prompt.py --self` 自己照做；交付后写回执（`retrieve.py --record-used`）。
+- **可选辅助**（项目已有清单习惯时才用）：`figure_manifest.py` 图件清单与 `--diff` 增量重导、`pair_check.py` 图-表同源核验——属于图件侧的组织，不是本技能核心。
+- **house style 落地**：`scripts/style_tokens.py` 体检项目绘图脚本（色板重复、同名不同色、主题/尺寸分布），`--emit` 生成**项目自己的**共享 theme 文件，让「记住的偏好」变成「跑不掉的约束」；技能本身不存具体色值，风格只按槽位描述（主色板/分组色板/发散色板/字号层级/尺寸/导出规格…）。`scripts/mine_feedback.py`（可选，取决于 harness 是否留会话日志）定期从会话历史挖用户纠偏，产出偏好候选交整理流程判断。
 - **回流**：满意的结果回收为新条目；对已有条目的意见写入其模板缺省值并记入演化记录；跨图反复出现的习惯沉淀到 `library/PREFERENCES.md`。
 - **整理**：整体偏好（`PREFERENCES.md`）与部分偏好（各条目「复用要点」「演化记录」）定期收口——晋升、合并、降级、下沉、清退，并给每次整理留一行记录；`scripts/review_preferences.py` 判到期并列出机械可判定的必做项，语义合并由 agent 判断。
 - **总结**：`scripts/summary.py` 按节律出定量报告——图库规模与月度增长、复用台账（检索次数/命中率/命中热度/**未命中需求 → 待学候选**）、偏好计数、结构告警。台账由 `retrieve.py` 每次检索自动记录，也是「agent 到底有没有在查图库」的唯一客观证据。

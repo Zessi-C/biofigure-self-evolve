@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""生成"图件 QA 子代理"的委派提示：出图的和验收的分开，避免自己检查自己的盲区。
+"""生成图件验收提示：把"出图"和"看图"分开，避免自己检查自己的盲区。
 
 真实使用记录里，跑过绘图命令的会话只有三分之一打开过渲染结果；用户反馈的缺陷又几乎
 全是"看一眼就能发现"的（重叠、出界、字太小、留白、面板不齐）。把验收交给一个只拿
@@ -7,6 +7,7 @@
 
 用法:
     qa_prompt.py FIGDIR                       # 打印可直接粘进 subagent/task 的提示
+    qa_prompt.py FIGDIR --self                # 没有子代理时：给自己照做的自检提示
     qa_prompt.py FIGDIR --task "四队列组成图定稿" --entry 013-milo-da-dualtrack-profile
     qa_prompt.py FIGDIR --max 8 --out /tmp/qa.md
     qa_prompt.py FIGDIR --list-only           # 只列待检文件
@@ -49,24 +50,36 @@ def load_checklist() -> str:
     return text.strip()
 
 
-def build_prompt(figdir: str, figures: list, task: str, entry: str) -> str:
+def build_prompt(figdir: str, figures: list, task: str, entry: str, self_mode: bool = False) -> str:
     lines = [
-        "# 图件验收（QA）任务",
+        "# 图件验收（QA）任务" if not self_mode else "# 图件验收（自检模式）",
         "",
         f"任务背景：{task or '（未提供，按图件本身判断）'}",
         f"图件目录：{figdir}",
     ]
     if entry:
         lines.append(f"本次复用的配方条目：`{entry}`（检查是否真的体现了该条目的画法）")
-    lines += [
-        "",
-        "## 你的角色（严格限定）",
-        "- 你**只做视觉验收**：打开图、对照清单、报告缺陷。",
-        "- **不要修改任何文件**，不要重画，不要运行绘图脚本，不要只根据文件大小/页数下结论。",
-        "- 每张图都必须真的打开看（有图像读取能力就用它）。",
-        "",
-        "## 待检文件",
-    ]
+    lines += [""]
+    if self_mode:
+        lines += [
+            "## 你现在是验收人，不是作者",
+            "- 先把**每一张图都打开看一遍**（有图像读取能力就用它），不要凭记忆判断。",
+            "- 第一遍只看不改：逐项过下面的清单，把缺陷记下来（位置 + 现象 + 改法）。",
+            "- 第二遍再动手改；改完**复看**确认修好了，直到清单全过。",
+            "- 交付说明里写**你看到了什么**（例：y 轴标签原与分面标题重叠，已改竖排并复看确认），不能只写已检查。",
+            "- 没有图像读取能力时：做文件级检查（尺寸/像素/页数）并**如实说明未能目视**。",
+            "",
+            "## 待检文件",
+        ]
+    else:
+        lines += [
+            "## 你的角色（严格限定）",
+            "- 你**只做视觉验收**：打开图、对照清单、报告缺陷。",
+            "- **不要修改任何文件**，不要重画，不要运行绘图脚本，不要只根据文件大小/页数下结论。",
+            "- 每张图都必须真的打开看（有图像读取能力就用它）。",
+            "",
+            "## 待检文件",
+        ]
     for rel, path, size in figures:
         lines.append(f"- `{path}`（{size / 1024:.0f} KB）")
     if not figures:
@@ -77,6 +90,19 @@ def build_prompt(figdir: str, figures: list, task: str, entry: str) -> str:
         "",
         load_checklist(),
         "",
+    ]
+    if self_mode:
+        lines += [
+            "## 输出（写进交付说明的那一段）",
+            "```",
+            "视觉自检：看了 <N> 张图（列出文件名）；发现并修复：<逐条：位置 + 现象 + 改法>；",
+            "复看确认：<哪些已确认修好>；未能目视：<若有，写清原因>",
+            "```",
+            "清单里没过的项不要含糊过去：要么改掉，要么在交付说明里明确写「未处理 + 原因」。",
+        ]
+        return "\n".join(lines)
+
+    lines += [
         "## 输出格式（严格遵守）",
         "对每张图输出一段：",
         "```",
@@ -100,6 +126,8 @@ def main() -> int:
     parser.add_argument("--max", type=int, default=12, help="最多列几张（按体积降序，默认 12；0=全部）")
     parser.add_argument("--ext", default=".png,.jpg,.jpeg,.pdf",
                         help="只检这些扩展名（逗号分隔）")
+    parser.add_argument("--self", dest="self_mode", action="store_true",
+                        help="没有子代理时用：生成给自己照做的自检提示")
     parser.add_argument("--list-only", action="store_true", help="只列待检文件")
     parser.add_argument("--out", help="写入文件而不是打印")
     args = parser.parse_args()
@@ -117,12 +145,13 @@ def main() -> int:
         print(f"共 {len(figures)} 个（--max 限制前）")
         return 0
 
-    text = build_prompt(figdir, figures, args.task, args.entry)
+    text = build_prompt(figdir, figures, args.task, args.entry, self_mode=args.self_mode)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             fh.write(text + "\n")
         print(f"已写入 {args.out}（{len(figures)} 张图）")
-        print("用法：把该文件内容作为 task/subagent 的 prompt 传下去（子代理不需要再读技能目录）。")
+        print("用法：支持子代理的 harness 把它作为 task/subagent 的 prompt 传下去；"
+              "没有子代理就加 --self 生成自检提示自己照做。")
     else:
         print(text)
     return 0

@@ -1,6 +1,6 @@
 ---
 name: biofigure-self-evolve
-description: 画任何生信图之前先读本技能：写第一行绘图代码或把画图任务委派给子代理之前，先跑 retrieve.py 检索本地自进化图库、复用已学会的画法（多候选给差异对比与推荐），未命中才从头设计。覆盖一切生信/统计图（heatmap、volcano、KM 生存曲线、boxplot、enrichment dotplot、oncoprint、Venn/UpSet、circos、Manhattan、UMAP/t-SNE、forest、ROC、组合版式…）与文献/PDF/公众号/截图学图入库（图表配方 + R/Python 双模板，材料带代码线索时先追溯原始绘图代码）；也用于"看看图库/你都会画什么图"。委派子代理画图时必须把技能路径或检索结果写进委派提示。Use before writing or delegating ANY bioinformatics/biostatistics figure code.
+description: 画任何生信图之前先读本技能：写第一行绘图代码之前，先跑 retrieve.py 检索本地自进化图库、复用已学会的画法（多候选给差异对比与推荐），未命中才从头设计；同时规定图的美学与排版——配色逻辑、字号层级、留白、图例、面板布局、尺寸与导出规格。覆盖一切生信/统计图（heatmap、volcano、KM 生存曲线、boxplot、enrichment dotplot、oncoprint、Venn/UpSet、circos、Manhattan、UMAP/t-SNE、forest、ROC、组合版式…）与文献/PDF/公众号/截图学图入库（图表配方 + R/Python 双模板，材料带代码线索时先追溯原始绘图代码）；也用于「看看图库/你都会画什么图」。Use before writing ANY bioinformatics/biostatistics figure code.
 ---
 
 # Biofigure Memory — 生信 figure 学习库与复用引擎
@@ -16,7 +16,7 @@ description: 画任何生信图之前先读本技能：写第一行绘图代码�
    它输出最相近的 ≤3 条配方 + 偏好摘要（比读整个 INDEX.json 便宜得多）。命中 → 按 B3 临摹式适配；未命中 → 才走普通设计流程，并在交付时说明"图库未命中"。
    **"这张图很简单 / 我见过这种图 / 用户没提图库" 都不构成跳过检索的理由。**
 2. **交付时自证**：交付说明里必须有一句「复用了 `NNN-slug` 的 XX（按你的数据改了 YY）」或「图库未命中，按普通流程设计」。没写这句，就等于没检索——这是本技能唯一的验收点。
-3. **委派不丢技能**：把画图/改图/复刻/学图交给子代理（omp 的 task、dsh 的 subagent 等）时，委派提示必须二选一：① 给出技能入口（omp 写 `skill://biofigure-self-evolve`，其他 harness 写技能目录绝对路径），要求子代理先读再动手；② 直接把 `retrieve.py --json --no-preferences "<需求>"` 的候选结果（必要时再附上要遵守的偏好）粘进提示。父代理收工前检查子代理的交付说明里有没有第 2 条的句子——最常见的失手就是父代理查了库、子代理没查。
+3. **委派不丢技能**（*仅当你的 harness 支持把任务交给子代理时适用；不支持就自己全程做完，本条自动不适用*）：委派提示必须二选一——① 给出技能入口（如 omp 的 `skill://biofigure-self-evolve`，其他 harness 写技能目录绝对路径），要求子代理先读再动手；② 直接把 `retrieve.py --json --no-preferences "<需求>"` 的候选结果（必要时再附要遵守的偏好）粘进提示。父代理收工前检查子代理的交付说明里有没有第 2 条的句子——最常见的失手就是父代理查了库、子代理没查。
 
 **安装时就把钩子装上**（这一步和克隆仓库同等重要，别留给"以后再说"）：
 
@@ -28,6 +28,28 @@ python3 <技能目录>/scripts/install_hook.py --project /path/to/项目   # omp
 
 钩子只有 5 行，写在每一轮都会读的指令文件里，用成对 HTML 注释包住（重复运行只替换该块，`--uninstall` 可撤销）。描述负责"把技能列出来"，钩子负责"每一轮都被看到"，两者互补——只靠描述就会重现"agent 老是不查图库"。
 **若用户抱怨"你又不查图库"，而你这次确实是被人提醒才想起**：先跑 `install_hook.py --check`，没装就装上，再继续干活。手工文案与其他 harness 的位置见 `references/trigger-hook.md`。
+
+## 适用范围与边界（先读）
+
+**本技能管两件事：画什么类型的图（选型 + 配方复用）、怎么把图做好看（美学与排版规范）。**
+
+做：
+
+- 图型选择与推荐：命中图库条目、多候选给差异对比、未命中才从头设计
+- 从文献 / 项目历史脚本与成图里学画法，沉淀成可复用配方（配方 + R/Python 双模板）
+- 美学与排版规范：配色逻辑、字号层级、留白与紧凑、图例、面板布局与联动、尺寸、导出规格
+- 风格统一：跨图共用同一套风格；跨脚本/跨批次的色板与主题收敛到一处
+- 图件侧的组织约定：命名与目录（图件放哪、怎么命名），以及交付前的目视验收
+- 维护图库与偏好档案
+
+不做（明确交回用户或对应工具，不要越界接管）：
+
+- **统计分析本身与统计口径是否正确**——只提示风险，不替用户改分析
+- 数据管道、中间产物与项目目录管理
+- 表格 / Excel / 文档交付（那是别的技能或工具的事）
+- 非图件产物的组织、登记与校验
+
+**风格用槽位描述，技能里不存任何具体色值**：主色板 / 分组色板 / 发散色板 / 连续色板 / 强调色 / 字号层级 / 画布尺寸 / 导出规格 / 主题基调。具体色值来自 `library/PREFERENCES.md`（用户偏好，标适用范围）或项目自己的 theme 文件；技能只负责「用哪一类色、用在哪里、怎么保持一致」。
 
 技能只有两个模式，按用户意图选择：
 
@@ -55,7 +77,7 @@ python3 <技能目录>/scripts/install_hook.py --project /path/to/项目   # omp
 | 数据分析任务隐含出图需求（如差异分析跑完需要呈现结果） | 结果呈现前跑 `retrieve.py`；命中按复用流程，未命中正常设计 |
 | 一次要一整套图（每个对象/亚群/对比一张） | 模式 B 的 B0：先出图族清单（图名/条目/尺寸/命名/路径），再批量出图、统一自检 |
 | 「参考我之前的风格 / 把项目里这套画法入库 / 提取这套绘图风格」 | 模式 A 的 A0.5：先读项目绘图脚本（事实源）再读成图，`source.type=project`，学 house style 而非抄单图 |
-| 要把画图/改图/复刻/学图委派给子代理 | 委派提示带上技能入口或 `retrieve.py --json` 结果（硬规则第 3 条），父代理收工前检查子代理是否照做 |
+| 要把画图/改图/复刻/学图委派给子代理（若 harness 支持） | 委派提示带上技能入口或 `retrieve.py --json` 结果（硬规则第 3 条），父代理收工前检查子代理是否照做；不支持子代理则本条不适用 |
 | "照这张图画 / 按这篇文献风格复刻"（给了参考图或文献） | 参考图即规格：先按模式 A 学习它（这就是明确意图，无需再问），再按其配方对用户数据出图 |
 | 用户对刚交付的图表示满意 | 提议入库（manual 来源），同意即走模式 A |
 | 用户问"你都会画哪些图 / 看看图库" | 读 INDEX.md，按 chart_types 分组展示，不逐条展开 |
@@ -137,11 +159,11 @@ python3 <技能目录>/scripts/install_hook.py --project /path/to/项目   # omp
 5. **把 house style 变成跑不掉的约束**（比写进偏好更硬）：
 
 ```bash
-python3 <技能目录>/scripts/style_tokens.py <项目>/code            # 体检：色板清单、重复定义、主题/尺寸分布
+python3 <技能目录>/scripts/style_tokens.py <项目>/code            # 体检：色板清单、重复定义、同名不同色、主题/尺寸分布
 python3 <技能目录>/scripts/style_tokens.py <项目>/code --emit <项目>/code/00.figure_theme.R
 ```
 
-   真实项目里同一套配色/主题/尺寸往往在几十个脚本里各写一遍（本项目 26 个绘图脚本、652 处色值、144 个唯一色号、基础主题混用 classic/bw/void）。生成共享 theme 文件后，新脚本 `source()` 它，旧脚本逐个迁移（迁移一个跑一个，别一次全改）；条目与 `PREFERENCES.md` 只指向这个文件。
+   真实项目里同一套配色/主题/尺寸往往在几十个脚本里各写一遍，还会出现**同名不同色**（同一个变量名在不同脚本里指向不同色号集合）——这正是「风格不搭」的隐藏来源。生成共享 theme 文件后，新脚本 `source()` 它，旧脚本逐个迁移（迁移一个跑一个，别一次全改）；条目与 `PREFERENCES.md` 只指向这个文件，**技能里不存任何具体色值**。
 6. 学完顺手把跨图的那些约定（配色语义、尺寸、命名、目录）按 `references/preference-profile.md` 写进 `PREFERENCES.md` 并标适用范围——它们是项目级偏好，不是全图型通用规则
 
 ### A1 获取图像并确定学习单元
@@ -247,7 +269,7 @@ python3 <技能目录>/scripts/retrieve.py "用户要画什么，一两句"
 
 - **命中**：读第 1 名（有多个候选时按 B2 排序）的 `figure.md`，重点是「配方」「复用要点」「与相近条目的对比」三节
 - **未命中**：脚本会明说。此时才按普通流程从头设计，交付满意后再提议入库（B4）
-- **要浏览全库**：`retrieve.py --all`（按 chart_types 分组）；**要把结果交给子代理**：`--json`
+- **要浏览全库**：`retrieve.py --all`（按 chart_types 分组）；**要把结果交给别的 agent（如子代理）**：`--json`
 - 可用 `--chart volcano --lang R` 先按受控词/语言过滤，再语义排序
 - 每次检索会自动追加一行到 `library/USAGE.jsonl`（复用台账，`--no-log` 可关）——`summary.py` 靠它算命中率与待学候选，也是唯一能证明"agent 真的在查图库"的证据
 
@@ -288,34 +310,35 @@ python3 <技能目录>/scripts/retrieve.py "用户要画什么，一两句"
 
 ### B5 交付自检（强制目视，不可跳过）
 
-**渲染完成后必须亲眼看图**，这是本技能第二条硬规则（第一条是先检索）。真实使用记录里，跑过绘图命令的会话只有三分之一看过渲染结果，而用户反馈的缺陷几乎全是"看一眼就能发现"的：文字重叠、标题出界、字太小、留白过多、面板大小不一致、配色区分不开。
+**渲染完成后必须亲眼看图**，这是本技能第二条硬规则（第一条是先检索）。经验上最典型的失手就是没打开成图就交付，而缺陷几乎全是「看一眼就能发现」的：文字重叠、标题出界、字太小、留白过多、面板大小不一致、配色区分不开。
 
 1. 用 harness 的图像读取能力打开**最终交付的那几张图**（不是中间产物），逐项过 `references/delivery-checklist.md`
 2. 发现问题 → 改 → **复看**，直到清单全过；改完不看就交付等于没做
 3. 交付说明里写**看到了什么**（"y 轴标签原与分面标题重叠，已改竖排并复看确认"），不能只写"已检查"
-4. 无图像读取能力时退化为文件级检查（`figure_manifest.py` 看尺寸/像素/页数），并**如实说明"未能目视"**
-5. 图族/批量图：统一自检一遍，并更新图件清单（③ 增量重导也靠它）：
+4. 无图像读取能力时退化为文件级检查（尺寸/像素/页数），并**如实说明"未能目视"**
+5. 图族/批量图：统一自检一遍，并核对**跨图一致性**（同一批图的行序/色板/字号/尺寸是不是同一套）——这是"风格不搭"最常见的来源
+
+**要交出去的图 / 进正文的图，再加一道独立验收**（自己检查自己有盲区）：
 
 ```bash
-python3 <技能目录>/scripts/figure_manifest.py <图件目录> --write   # 生成/更新 figure_manifest.csv
-python3 <技能目录>/scripts/figure_manifest.py <图件目录> --check   # 被取代的旧图/残留 → 退出码 1
-python3 <技能目录>/scripts/figure_manifest.py <图件目录> --diff 旧清单.csv --only unchanged   # hash 没变 → 可跳过重导
-python3 <技能目录>/scripts/pair_check.py <图件目录> --tables <项目>/table   # 图-表同源核验
+python3 <技能目录>/scripts/qa_prompt.py <图件目录> --task "<这批图干什么用>" --out /tmp/qa.md
+# 支持子代理的 harness：把 /tmp/qa.md 的内容作为 task/subagent 的 prompt 传下去
+# 不支持子代理：加 --self，得到逐图自检 + 缺陷记录的执行提示，自己照着走一遍
 ```
 
-清单里 `entry_reused` 填复用了哪条配方（与脚本头部的 `# Biofigure <id> — <要点>` 注释、交付说明三处对齐），`source_table` 填这张图的数据来源表——图-表同源靠 `pair_check.py` 核验（表存在/非空/无孤儿表）。
+两种方式的产出都是**缺陷报告**（逐图：结论 + 位置/严重度/改法），不是重画。
 
-6. **交付回执**（让"用了哪条"可统计，也让"命中却从来不用"暴露出来）：
+**交付回执**（让图库知道你最终用了哪条；`summary.py` 靠它算条目采用率）：
 
 ```bash
 python3 <技能目录>/scripts/retrieve.py --record-used <条目 id> --task "<任务一句话>"
 ```
 
-7. **要交出去的图/进正文的图，走一次对抗式验收**（自己检查自己有盲区）：把 `qa_prompt.py` 生成的提示交给一个只做验收、不许改代码的子代理：
+**可选：图件登记与增量重导**——只在项目已有清单习惯、或图件多到需要清点旧版时才做（纯文件管理不属于本技能核心范围）：
 
 ```bash
-python3 <技能目录>/scripts/qa_prompt.py <图件目录> --task "<这批图干什么用>" --entry <条目 id> --out /tmp/qa.md
-# 然后把这个文件内容作为 task/subagent 的 prompt 传下去
+python3 <技能目录>/scripts/figure_manifest.py <图件目录> --write
+python3 <技能目录>/scripts/figure_manifest.py <图件目录> --diff 旧清单.csv --only unchanged
 ```
 
 ## 定期总结与整理（交付收尾自检）
@@ -340,16 +363,16 @@ python3 <技能目录>/scripts/summary.py --check              # 定量总结到
 
 到期条件：距上次总结 >30 天，或自上次总结新增 ≥20 条检索记录。报告落 `library/SUMMARY.md`，状态记 `library/SUMMARY.json`（都是个人数据，不入公开仓库）。**未命中需求反复出现时**，那是该学的新图型 → 问用户要不要现在学（模式 A）。
 
-### 偏好候选从哪来（⑤）
+### 偏好候选从哪来
 
-偏好的真实来源是多轮改图。除了当场写回，还可以定期从会话历史里挖：
+偏好的真实来源是多轮改图。除了当场写回，**若你的 harness 留有会话日志**，还可以定期从里面挖：
 
 ```bash
 python3 <技能目录>/scripts/mine_feedback.py --since 2026-08-01 --min-count 2
 # → <图库>/FEEDBACK-CANDIDATES.md：把用户"再改/还是不对/不要/改成"的原话聚类排频
 ```
 
-它**只产出候选，不写偏好**。逐条判断归属（跨图型通用 → 稳定偏好；只服务某项目/图型 → 下沉到条目并标适用范围；一次性要求 → 丢弃），判断完删掉候选文件，并在 `## 整理记录` 留一行。
+（没有会话日志的 harness 跳过这一步，直接靠当场写回即可。）它**只产出候选，不写偏好**。逐条判断归属（跨图型通用 → 稳定偏好；只服务某项目/图型 → 下沉到条目并标适用范围；一次性要求 → 丢弃），判断完删掉候选文件，并在 `## 整理记录` 留一行。
 
 ### 整理：整体偏好 ↔ 部分偏好
 
@@ -407,14 +430,14 @@ python3 <技能目录>/scripts/import_figure.py bundle.zip          # 校验完�
 ## 维护
 
 - `scripts/init_library.py [--path DIR]`：初始化图库骨架（幂等）；用 `--path` 指定非默认位置时自动写入 `~/.config/biofigure-self-evolve/config.json`
-- `scripts/retrieve.py "<需求>"`：模式 B 的检索入口——直接扫 figure.md，输出 top-K 候选 + 偏好摘要；`--all` 浏览、`--json` 给子代理、`--chart/--lang` 预过滤、`--preferences-only` 只要偏好
+- `scripts/retrieve.py "<需求>"`：模式 B 的检索入口——直接扫 figure.md，输出 top-K 候选 + 偏好摘要；`--all` 浏览、`--json` 输出结构化结果（要交给别的 agent 时用）、`--chart/--lang` 预过滤、`--preferences-only` 只要偏好
 - `scripts/install_hook.py`：把常驻触发钩子写进 agent 指令层（幂等，成对注释块，`--check/--uninstall/--dry-run`，`--project DIR` 装项目级 AGENTS.md）；技能装完就跑它
 - `scripts/summary.py`：定量总结——图库规模与月度增长、复用台账（命中率/热度/未命中需求）、偏好计数、结构告警；`--check` 判到期（退出码 1）、`--write` 落盘 SUMMARY.md、`--json` 给 agent。只读（`--write` 除外）
-- `scripts/style_tokens.py <代码目录>`：绘图样式体检 + `--emit` 生成共享 theme 文件（色板去重、统一主题与导出函数）；不改既有脚本
-- `scripts/qa_prompt.py <图件目录>`：生成"图件 QA 子代理"的委派提示（内联交付清单，子代理无需读技能目录）
-- `scripts/mine_feedback.py`：从会话历史挖用户纠偏，产出偏好候选清单（只产出候选，不写偏好）
-- `scripts/pair_check.py <图件目录> --tables <表格目录>`：图-表同源核验（每张图有 source_table、表存在非空、无孤儿表）
-- `scripts/figure_manifest.py <图件目录>`：图件清单——扫描 pdf/png/jpg 记录体积、页数/像素、时间、校验和，语义列（`figure_set`/`entry_reused`/`note`）更新时保留；`--write` 写 `figure_manifest.csv`、`--check` 报未登记文件与被取代的旧图（退出码 1）、`--diff 旧清单.csv` 给增量重导（哪些新增/消失/内容变了/内容没变）
+- `scripts/qa_prompt.py <图件目录>`：生成图件验收提示（内联交付清单）；有子代理就交给子代理，`--self` 给自己照着走
+- `scripts/style_tokens.py <代码目录>`：绘图样式体检 + `--emit` 生成项目共享 theme 文件 + `--migrate` 迁移本地色板定义（默认 dry-run、自动备份）
+- `scripts/mine_feedback.py`：从会话历史挖用户纠偏，产出偏好候选清单（可选；取决于 harness 是否留会话日志）
+- `scripts/pair_check.py <图件目录> --tables <表格目录>`：图-表同源核验（可选；只在项目本来就图-表配对时用）
+- `scripts/figure_manifest.py <图件目录>`：图件清单——扫描 pdf/png/jpg 记录体积、页数/像素、时间、校验和，语义列（`figure_set`/`entry_reused`/`source_table`/`note`）更新时保留；`--write` 写 `figure_manifest.csv`、`--check` 报未登记文件与被取代的旧图（退出码 1）、`--diff 旧清单.csv` 给增量重导（哪些新增/消失/内容变了/内容没变）
 - `scripts/review_preferences.py`：偏好整理审计——容量/格式/重复/晋升降级/跨条目复现/过期未复现/条目内堆积；`--check` 判到期（退出码 1）、`--digest` 出可粘贴进 harness 记忆的摘要、`--json` 给 agent 逐项执行。只读不写
 - `scripts/build_index.py [--library DIR]`：扫描所有 `figures/*/figure.md`，重建 INDEX.json + INDEX.md（无 PyYAML 也能跑），并告警缺字段、id 与目录名不一致、related 悬空、languages 与模板文件不符、reference.png 缺失或超 2MB；手动改过 figure.md 后运行
 - `scripts/build_index.py --check`：只比对索引与记录是否一致（不一致退出码 1），不写文件；模式 B 检索前的快速新鲜度判定

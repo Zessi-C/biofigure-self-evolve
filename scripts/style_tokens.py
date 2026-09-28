@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """项目绘图样式体检 + 生成共享 theme 文件（把 house style 从"靠记"变成"跑不掉"）。
 
-真实项目里同一套配色/主题/尺寸会在几十个脚本里各写一遍：本项目 26 个绘图脚本里有
-652 处十六进制色值、144 个唯一色号、基础主题混用 theme_classic/theme_bw/theme_void。
+真实项目里同一套配色/主题/尺寸会在几十个脚本里各写一遍，还会出现**同名不同色**
+（同一个变量名在不同脚本里指向不同色号集合）——这正是「风格不搭」的隐藏来源。
 偏好写在 PREFERENCES.md 里还要靠 agent 每次记得用，写进共享 theme 文件则强制生效。
+
+本脚本是通用工具：只读项目脚本、抽出色板/主题/尺寸，生成的 theme 文件写回**项目**；
+技能本身不存任何具体色值（风格用槽位描述，色值来自项目或 PREFERENCES.md）。
 
 用法:
     style_tokens.py CODE_DIR                      # 体检报告：色板清单、重复定义、主题/尺寸分布
@@ -198,7 +201,7 @@ def render_report(scans: list, canon: list, code_dir: str) -> str:
           "1. `--emit 00.figure_theme.R` 生成共享 theme 文件：把上面的色板去重成命名色板 + 统一主题 + 统一导出函数",
           "2. 新脚本 `source()` 它；旧脚本逐步迁移（迁移一个跑一个，别一次全改）",
           "3. 把跨图约定按 `references/preference-profile.md` 写进 `PREFERENCES.md`（标适用范围），并把 theme 文件路径写进条目「复用要点」",
-          "4. 迁移完成后重跑本脚本：唯一色号数应明显下降（本项目当前 144 个）"]
+          f"4. 迁移完成后重跑本脚本：唯一色号数应明显下降（当前 {len(all_colors)} 个）"]
     return "\n".join(L)
 
 
